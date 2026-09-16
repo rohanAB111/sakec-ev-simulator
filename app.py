@@ -58,7 +58,7 @@ st.markdown("""
 # ==========================================
 # SIDEBAR NAVIGATION & VEHICLE PRESETS
 # ==========================================
-st.sidebar.image("https://img.icons8.com/color/96/electric-car.png", width=70)
+st.sidebar.image("https://github.com/rohanAB111/sakec-ev-simulator/blob/main/ShahAnchor-logo-v1.png", width=70)
 st.sidebar.title("EV Course Navigator")
 st.sidebar.caption("First-Year Engineering Interactive Learning Platform")
 
