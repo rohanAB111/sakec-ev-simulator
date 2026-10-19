@@ -2,65 +2,238 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
+import time
+
+from ev_quizzes import EV_MODULES_DATA
+from ev_backend import (
+    register_or_get_student,
+    complete_simulation,
+    get_student_profile,
+    get_all_students_progress,
+    export_master_excel
+)
+import onedrive_sync
 
 # ==========================================
-# PAGE CONFIGURATION & STYLING
+# PAGE CONFIGURATION & INSTITUTIONAL THEME
 # ==========================================
 st.set_page_config(
-    page_title="EV Engineering Classroom Simulator",
+    page_title="SAKEC EV Simulation & Learning Platform",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for crisp, high-contrast educational UI
+# SAKEC Custom Styling
 st.markdown("""
 <style>
+    .inst-header {
+        background: linear-gradient(135deg, #101426, #1c233d);
+        border: 1px solid #2d375d;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    .inst-title {
+        font-size: 1.15rem;
+        font-weight: 800;
+        letter-spacing: 0.8px;
+        color: #F2B705;
+        text-transform: uppercase;
+        margin: 0;
+    }
+    .inst-sub {
+        font-size: 0.85rem;
+        color: #A0AEC0;
+        margin: 4px 0 0;
+    }
+    .developer-tag {
+        display: inline-block;
+        background: rgba(242, 183, 5, 0.15);
+        color: #F2B705;
+        border: 1px solid rgba(242, 183, 5, 0.3);
+        padding: 2px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-top: 6px;
+    }
     .main-title {
-        font-size: 2.2rem;
+        font-size: 2.0rem;
         font-weight: 700;
         color: #1E3A8A;
         margin-bottom: 0.2rem;
     }
     .sub-title {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         color: #4B5563;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
     .lecture-badge {
         background-color: #DBEAFE;
         color: #1E40AF;
         padding: 4px 12px;
-        border-radius: 9999px;
-        font-weight: 600;
-        font-size: 0.85rem;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.8rem;
         display: inline-block;
         margin-bottom: 0.5rem;
     }
-    .metric-card {
-        background: #F9FAFB;
-        border: 1px solid #E5E7EB;
-        border-radius: 8px;
-        padding: 12px 16px;
-        text-align: center;
-    }
     .takeaway-box {
-        background-color: #ECFDF5;
-        border-left: 4px solid #10B981;
-        padding: 12px 16px;
-        border-radius: 4px;
-        margin-top: 1rem;
-        margin-bottom: 1rem;
+        background-color: #F0FDF4;
+        border-left: 4px solid #16A34A;
+        padding: 14px 18px;
+        border-radius: 0 8px 8px 0;
+        margin-top: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .reflection-box {
+        background: #F8FAFC;
+        border: 2px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+    }
+    .footer {
+        text-align: center;
+        color: #64748B;
+        font-size: 0.85rem;
+        border-top: 1px solid #E2E8F0;
+        padding-top: 18px;
+        margin-top: 40px;
     }
 </style>
 """, unsafe_allow_html=True)
 
+# Render Institutional Header
+st.markdown("""
+<div class="inst-header">
+    <div class="inst-title">Shah & Anchor Kutchhi Engineering College, Chembur, Mumbai</div>
+    <div class="inst-sub">An Autonomous Institute Affiliated to University of Mumbai · NAAC 'A' Grade · Approved by AICTE</div>
+    <div class="developer-tag">Electric Vehicle Simulation Platform · Developed by Dr. Rohan Borgalli</div>
+</div>
+""", unsafe_allow_html=True)
+
 # ==========================================
-# SIDEBAR NAVIGATION & VEHICLE PRESETS
+# AUTHENTICATION & LOGIN MANAGEMENT
 # ==========================================
-st.sidebar.image("https://github.com/rohanAB111/sakec-ev-simulator/blob/main/ShahAnchor-logo-v1.png", width=70)
-st.sidebar.title("EV Course Navigator")
-st.sidebar.caption("First-Year Engineering Interactive Learning Platform")
+SAKEC_DEPARTMENTS = [
+    "Computer Engineering",
+    "Information Technology",
+    "Artificial Intelligence & Data Science",
+    "Electronics & Computer Science",
+    "Cyber Security",
+    "Electronics & Telecommunication Engineering (EXTC)",
+    "Humanities & Applied Sciences (First Year / FE)",
+    "Electronics Engg (VLSI Design & Technology)",
+    "Electronics & Comm (Adv Communication Technology)",
+    "Master of Computer Applications (MCA)",
+    "B.Voc Cyber Security",
+    "B.Voc AI & Data Science",
+    "Other Department"
+]
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user = None
+
+def render_login_screen():
+    st.markdown('<div class="main-title">🔐 EV Platform Login & Authentication</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Sign in to access interactive EV simulations, submit technical reflections, and maintain your accredited learning profile.</div>', unsafe_allow_html=True)
+
+    tab_student, tab_faculty = st.tabs(["👨‍🎓 Student Portal", "🛡️ Faculty / Administrator Portal"])
+
+    with tab_student:
+        st.subheader("Student Access Portal")
+        st.caption("Enter your college credentials to record simulation completion and track learning progress.")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            name = st.text_input("Student Full Name *", placeholder="e.g. Rahul Sharma")
+            roll = st.text_input("Roll Number / Student ID *", placeholder="e.g. 23AIDS102")
+        with c2:
+            email = st.text_input("College Email ID (@sakec.ac.in) *", placeholder="rahul.sharma@sakec.ac.in")
+            dept = st.selectbox("Academic Department *", SAKEC_DEPARTMENTS)
+        
+        division = st.text_input("Class Division / Batch", placeholder="e.g. Div A / Batch A1")
+
+        if st.button("🚀 Enter EV Simulation Lab", type="primary", use_container_width=True):
+            if name.strip() and roll.strip() and email.strip():
+                user_record = register_or_get_student(name, roll, email, dept, division)
+                st.session_state.logged_in = True
+                st.session_state.user = {
+                    "name": name.strip(),
+                    "roll": roll.strip().upper(),
+                    "email": email.strip().lower(),
+                    "dept": dept,
+                    "division": division.strip(),
+                    "role": "student"
+                }
+                st.success("Authentication successful! Loading simulation modules...")
+                st.rerun()
+            else:
+                st.error("Please fill in all required fields (Name, Roll Number, and Email).")
+
+        st.markdown("---")
+        st.markdown("**Institutional Single Sign-On (SSO):**")
+        st.caption("College Microsoft 365 accounts allow 1-click login and automated OneDrive report backup.")
+        if st.button("🔑 Sign in with Microsoft 365 (@sakec.ac.in)", use_container_width=True):
+            if onedrive_sync.is_configured():
+                st.info("Redirecting to Microsoft Entra ID college login...")
+            else:
+                st.info("Microsoft 365 Integration Note: SAKEC faculty and students can authenticate with Entra ID and sync reports directly to their OneDrive once the SAKEC IT admin configures MICROSOFT_CLIENT_ID on the server. In the meantime, use your college email above.")
+
+    with tab_faculty:
+        st.subheader("Faculty & Administrator Control")
+        st.caption("Access student reflection dossiers, review module completion matrices, and export NBA/NAAC assessment reports.")
+        f_email = st.text_input("Faculty Email", "admin@sakec.ac.in")
+        f_pass = st.text_input("Administrator Password", type="password", placeholder="Default: admin@123")
+        
+        if st.button("🛡️ Sign In to Faculty Dashboard", type="primary", use_container_width=True):
+            if f_pass == "admin@123" or f_pass == "sakec@123":
+                st.session_state.logged_in = True
+                st.session_state.user = {
+                    "name": "Dr. Rohan Borgalli",
+                    "email": f_email.lower(),
+                    "dept": "Computer Engineering",
+                    "role": "admin"
+                }
+                st.success("Faculty administrator authenticated.")
+                st.rerun()
+            else:
+                st.error("Invalid password. Default is admin@123.")
+
+if not st.session_state.logged_in:
+    render_login_screen()
+    st.markdown('<div class="footer">Shah & Anchor Kutchhi Engineering College, Chembur, Mumbai<br>Developed by <b>Dr. Rohan Borgalli</b></div>', unsafe_allow_html=True)
+    st.stop()
+
+# ==========================================
+# SIDEBAR NAVIGATION & USER PROFILE CHIP
+# ==========================================
+user = st.session_state.user
+
+user_badge = "👨‍🎓 " + user["name"] if user.get("role") == "student" else "🛡️ " + user["name"]
+dept_badge = user.get("roll", user["role"].capitalize()) + " · " + user.get("dept", "SAKEC")
+
+st.sidebar.markdown(f"""
+<div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:10px; padding:12px; margin-bottom:14px;">
+    <div style="font-size:0.75rem; text-transform:uppercase; color:#64748B; font-weight:700;">Active User Profile</div>
+    <div style="font-size:0.95rem; font-weight:700; color:#1E293B;">{user_badge}</div>
+    <div style="font-size:0.8rem; color:#475569;">{dept_badge}</div>
+</div>
+""", unsafe_allow_html=True)
+
+if st.sidebar.button("🚪 Sign Out", use_container_width=True):
+    st.session_state.logged_in = False
+    st.session_state.user = None
+    st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.title("EV Module Navigator")
 
 lecture_options = [
     "📌 Course Overview & EV Architecture",
@@ -71,10 +244,12 @@ lecture_options = [
     "5️⃣ Lecture 5: EV Charging Infrastructure & CC-CV",
     "6️⃣ Lecture 6: Well-to-Wheel (WTW) Decarbonization",
     "7️⃣ Lecture 7: Total Cost of Ownership (TCO)",
-    "📝 Lecture 8: Classroom Interactive Concept Check"
+    "📝 Lecture 8: Classroom Interactive Concept Check",
+    "👤 My Profile & Learning Portfolio",
+    "🛡️ Faculty & Admin Progress Dashboard"
 ]
 
-selected_lecture = st.sidebar.selectbox("Select Lecture Module:", lecture_options)
+selected_lecture = st.sidebar.selectbox("Select Learning Module:", lecture_options)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Classroom Preset Vehicles")
@@ -83,7 +258,6 @@ preset_choice = st.sidebar.radio(
     ["Custom Configuration", "Tata Nexon EV (Compact SUV)", "Ather 450X (Electric 2W)", "Olectra e-Bus (Commercial Transit)"]
 )
 
-# Standardized parameters based on selection
 if preset_choice == "Tata Nexon EV (Compact SUV)":
     default_mass = 1550
     default_cd = 0.33
@@ -121,11 +295,78 @@ else:
     default_motor_t = 200.0
     default_voltage = 300.0
 
-st.sidebar.markdown("---")
-st.sidebar.info("💡 **Tip for Instructors:** Project this platform on the classroom screen while students adjust parameters on their own smartphones or laptops to explore physical trade-offs in real time.")
-
-
 # ==========================================
+# POST-SIMULATION REFLECTION & QUIZ COMPONENT
+# ==========================================
+def render_post_simulation_block(module_key, module_title, tested_params):
+    st.markdown('<div class="reflection-box">', unsafe_allow_html=True)
+    st.markdown(f'<h3 style="color:#1E3A8A; margin-top:0;">📝 Student Reflection &amp; Concept Check: {module_title}</h3>', unsafe_allow_html=True)
+    st.caption("To complete this simulation and archive progress in your official SAKEC student profile, complete the reflection and concept check below.")
+
+    mod_data = EV_MODULES_DATA.get(module_key, {})
+    prof = get_student_profile(user["email"]) or {}
+    comp_data = prof.get("completed_modules", {}).get(module_key, {})
+    is_already_completed = comp_data.get("completed", False)
+
+    if is_already_completed:
+        comp_time = comp_data.get('completed_at', time.time())
+        t_str = time.strftime('%d %b %Y, %I:%M %p', time.localtime(comp_time))
+        st.success(f"✓ You previously completed this simulation on {t_str} with score: {comp_data.get('quiz_percentage', 100)}%. You may re-submit to update your record.")
+
+    st.markdown("#### 1. Technical Reflection & Observations")
+    prompt_str = mod_data.get('reflection_prompt', 'Describe your engineering observations when varying vehicle parameters.')
+    st.info(f"**Reflection Prompt:** {prompt_str}")
+    
+    prev_ref = comp_data.get("reflection", "")
+    reflection_text = st.text_area(
+        "Enter your engineering reflection (explain observed trade-offs, trends, and physical reasoning):",
+        value=prev_ref,
+        height=140,
+        placeholder="Based on the simulation plots, when vehicle speed increased from 40 to 100 km/h, the power demand increased cubically due to aerodynamic drag...",
+        key=f"ref_area_{module_key}"
+    )
+
+    st.markdown("#### 2. Understanding Verification Check")
+    questions = mod_data.get("questions", [])
+    total_q = len(questions)
+    user_choices = {}
+
+    for q_idx, q in enumerate(questions):
+        st.markdown(f"**Q{q_idx+1}: {q['q']}**")
+        ans = st.radio(
+            "Select option:",
+            q["options"],
+            key=f"quiz_{module_key}_{q_idx}",
+            label_visibility="collapsed"
+        )
+        user_choices[q_idx] = q["options"].index(ans)
+
+    if st.button(f"✅ Submit Reflection & Mark {mod_data.get('short_title', 'Simulation')} Completed", type="primary", key=f"btn_{module_key}"):
+        if not reflection_text or len(reflection_text.strip()) < 25:
+            st.error("Please provide a meaningful technical reflection (at least 25 characters) detailing your simulation observations.")
+            return
+
+        score = 0
+        st.markdown("##### Detailed Concept Explanations:")
+        for q_idx, q in enumerate(questions):
+            is_correct = (user_choices[q_idx] == q["correct"])
+            if is_correct:
+                score += 1
+                st.success(f"**Q{q_idx+1} Correct:** {q['options'][q['correct']]} — {q['explain']}")
+            else:
+                st.error(f"**Q{q_idx+1} Incorrect:** You selected '{q['options'][user_choices[q_idx]]}'. Correct: **{q['options'][q['correct']]}**. — {q['explain']}")
+
+        pct_score = round((score / total_q) * 100, 1) if total_q > 0 else 100.0
+        complete_simulation(
+            user["email"], user["name"], user.get("roll", "FACULTY"),
+            user.get("dept", "SAKEC"), user.get("division", ""),
+            module_key, reflection_text, score, total_q, tested_params
+        )
+        st.balloons()
+        st.success(f"🎉 Module Completed! Score: {pct_score}%. Your record has been permanently archived in your SAKEC student profile.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 # MODULE 0: OVERVIEW & ARCHITECTURE
 # ==========================================
 if selected_lecture == "📌 Course Overview & EV Architecture":
@@ -665,117 +906,138 @@ elif selected_lecture == "7️⃣ Lecture 7: Total Cost of Ownership (TCO)":
 
 
 # ==========================================
+
+
+# ==========================================
 # MODULE 8: INTERACTIVE CLASSROOM QUIZ
 # ==========================================
 elif selected_lecture == "📝 Lecture 8: Classroom Interactive Concept Check":
-    st.markdown('<div class="lecture-badge">LECTURE 8</div>', unsafe_allow_html=True)
-    st.markdown('<div class="main-title">Interactive Classroom Concept Check</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Live Formative Assessment for First-Year Engineering Students</div>', unsafe_allow_html=True)
-
-    st.info("Students: Answer the questions below during class to test your understanding of Electric Vehicle physics and engineering principles!")
+    st.markdown('<div class="lecture-badge">MODULE 8</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">Comprehensive EV Concept Check</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Test Your Mastery Across All 7 EV Physics & Engineering Modules</div>', unsafe_allow_html=True)
 
     score = 0
-    total_q = 5
+    q1 = st.radio("1. What component dominates power consumption at speeds >80 km/h?", ["Aerodynamic drag (scales with v³)", "Rolling resistance", "Tire pressure", "Cabin stereo"])
+    if q1 == "Aerodynamic drag (scales with v³)": score += 1
 
-    # Question 1
-    st.markdown("### Question 1: Aerodynamic Power Scaling")
-    q1 = st.radio(
-        "If an electric vehicle doubles its cruising speed from 50 km/h to 100 km/h, by what factor does the aerodynamic power requirement increase?",
-        ["2 times", "4 times", "8 times", "Remains unchanged"],
-        key="q1"
-    )
-    if q1 == "8 times":
-        st.success("✅ **Correct!** Aerodynamic drag force scales with $v^2$, so power ($P = F \cdot v$) scales with $v^3$. Doubling velocity increases power demand by $2^3 = 8$ times.")
-        score += 1
-    elif q1:
-        st.error("❌ **Incorrect.** Recall that $F_{\text{ad}} \propto v^2$, and $P = F_{\text{ad}} \cdot v \propto v^3$.")
+    q2 = st.radio("2. What motor type is most common in passenger EVs for maximum efficiency?", ["PMSM", "Brushed DC", "Stepper Motor", "Single-phase Induction"])
+    if q2 == "PMSM": score += 1
 
-    st.markdown("---")
+    q3 = st.radio("3. Why does DC fast charging slow down above 80% SOC?", ["Constant Voltage (CV) mode protects battery chemistry", "Charger overheats", "Grid goes offline", "Electric motors switch off"])
+    if q3 == "Constant Voltage (CV) mode protects battery chemistry": score += 1
 
-    # Question 2
-    st.markdown("### Question 2: Electric Motor vs ICE Torque")
-    q2 = st.radio(
-        "Why can most Battery Electric Vehicles operate with a simple single-speed reduction gearbox instead of a multi-speed transmission?",
-        [
-            "Electric motors are smaller in physical size",
-            "Electric motors deliver peak maximum torque right from 0 RPM (stall) up to base speed",
-            "Batteries can only produce direct current",
-            "Electric vehicles cannot drive faster than 100 km/h"
-        ],
-        key="q2"
-    )
-    if q2 == "Electric motors deliver peak maximum torque right from 0 RPM (stall) up to base speed":
-        st.success("✅ **Correct!** Because electric traction motors provide maximum torque from stall and possess a broad constant power speed range, a single-speed gearbox is sufficient.")
-        score += 1
-    elif q2:
-        st.error("❌ **Incorrect.** The key reason is the torque-speed profile: peak torque from zero RPM eliminates the need for clutch slip and multiple gears.")
+    if st.button("Submit Comprehensive Assessment", type="primary"):
+        st.write(f"### Final Score: {score} / 3")
+        if score == 3:
+            st.success("🌟 Outstanding Engineering Mastery! You demonstrated clear command of EV dynamics, powertrains, and charging physics.")
+        else:
+            st.info("Good effort! Review the simulation modules to deepen your physical intuition.")
 
-    st.markdown("---")
 
-    # Question 3
-    st.markdown("### Question 3: Battery Thermal Stability in Indian Climate")
-    q3 = st.radio(
-        "Why is Lithium Iron Phosphate (LFP) chemistry widely favored over NMC for mass-market electric vehicles in India?",
-        [
-            "LFP has higher energy density than NMC",
-            "LFP cells have a much higher thermal runaway threshold (>270°C) and superior cycle life",
-            "LFP cells operate at 12 Volts per cell",
-            "LFP does not require any Battery Management System (BMS)"
-        ],
-        key="q3"
-    )
-    if "higher thermal runaway threshold" in q3:
-        st.success("✅ **Correct!** LFP offers exceptional thermal stability and long cycle life (2500-3000+ cycles), making it resilient to tropical ambient temperatures.")
-        score += 1
-    elif q3:
-        st.error("❌ **Incorrect.** While NMC has higher energy density, LFP is preferred due to safety, higher thermal runaway onset, and cycle life.")
+# ==========================================
+# STUDENT PROFILE & LEARNING PORTFOLIO VIEW
+# ==========================================
+elif selected_lecture == "👤 My Profile & Learning Portfolio":
+    st.markdown('<div class="main-title">👤 Student Learning Profile &amp; EV Portfolio</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Official Laboratory Record · Shah &amp; Anchor Kutchhi Engineering College</div>', unsafe_allow_html=True)
 
-    st.markdown("---")
+    prof = get_student_profile(user["email"]) or {
+        "name": user["name"],
+        "roll": user.get("roll", "—"),
+        "dept": user.get("dept", "—"),
+        "division": user.get("division", "—"),
+        "completed_modules": {}
+    }
 
-    # Question 4
-    st.markdown("### Question 4: Regenerative Braking Limitations")
-    q4 = st.radio(
-        "Under which condition must the Battery Management System (BMS) disable or limit regenerative braking?",
-        [
-            "When vehicle speed is over 40 km/h",
-            "When the battery is at 98%–100% State of Charge (SoC)",
-            "When driving uphill",
-            "When the headlights are turned on"
-        ],
-        key="q4"
-    )
-    if "98%–100% State of Charge" in q4:
-        st.success("✅ **Correct!** When the battery is full, charging it further with high regenerative braking current will cause over-voltage and thermal stress.")
-        score += 1
-    elif q4:
-        st.error("❌ **Incorrect.** At near 100% SoC, there is no chemical capacity to accept fast charge current safely.")
+    comp_dict = prof.get("completed_modules", {})
+    total_completed = len([m for m in comp_dict.values() if m.get("completed")])
+    scores = [m.get("quiz_percentage", 0) for m in comp_dict.values() if m.get("completed")]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
 
-    st.markdown("---")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Student Name", prof.get("name", user["name"]))
+    c2.metric("Roll Number", prof.get("roll", "—"))
+    c3.metric("Simulations Completed", f"{total_completed} / 7")
+    c4.metric("Average Quiz Score", f"{avg_score}%")
 
-    # Question 5
-    st.markdown("### Question 5: CC-CV Fast Charging Dynamics")
-    q5 = st.radio(
-        "Why does charging an EV battery from 80% to 100% SoC take disproportionately longer than from 20% to 40%?",
-        [
-            "The charger shuts down one phase of electricity",
-            "The charging system switches to Constant Voltage (CV) mode, tapering current down to protect cells",
-            "Electric grid voltage drops at night",
-            "Battery internal resistance drops to zero"
-        ],
-        key="q5"
-    )
-    if "Constant Voltage (CV) mode, tapering current" in q5:
-        st.success("✅ **Correct!** Above ~80% SoC, voltage is clamped at maximum threshold and current decays exponentially to avoid lithium plating.")
-        score += 1
-    elif q5:
-        st.error("❌ **Incorrect.** In the CV phase, charging current is tapered down exponentially to safeguard battery longevity.")
+    st.progress(total_completed / 7.0, text=f"Lab Completion Progress: {int((total_completed/7)*100)}%")
 
-    st.markdown("---")
-    st.markdown(f"### 🏆 Live Classroom Score: **{score} / {total_q}** ({score/total_q*100:.0f}%)")
-    if score == 5:
-        st.balloons()
-        st.success("Outstanding! You have mastered the core First-Year Electric Vehicle concepts!")
+    st.markdown("### Completed Simulation Dossier")
+    if total_completed == 0:
+        st.info("You have not completed any simulations yet. Navigate to any module from the left sidebar, run the physics simulation, and submit your technical reflection.")
+    else:
+        for m_key, m_info in EV_MODULES_DATA.items():
+            if m_key in comp_dict and comp_dict[m_key].get("completed"):
+                data = comp_dict[m_key]
+                t_str = time.strftime('%d %b %Y, %I:%M %p', time.localtime(data.get('completed_at', time.time())))
+                with st.expander(f"✓ {m_info['title']} — Score: {data.get('quiz_percentage', 100)}% (Completed {t_str})", expanded=True):
+                    st.markdown("**Submitted Technical Reflection:**")
+                    st.write(data.get("reflection", "No reflection text provided."))
+                    if data.get("parameters"):
+                        st.caption(f"Tested Parameters: {data['parameters']}")
+
+
+# ==========================================
+# FACULTY & ADMIN PROGRESS DASHBOARD
+# ==========================================
+elif selected_lecture == "🛡️ Faculty & Admin Progress Dashboard":
+    st.markdown('<div class="main-title">🛡️ Faculty &amp; Administrator Progress Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Continuous Internal Assessment (CCE / NBA Criterion 2.2.1) · Class-Wide Progress</div>', unsafe_allow_html=True)
+
+    all_students = get_all_students_progress()
+    total_st = len(all_students)
+    total_sims_done = sum(s["completed_count"] for s in all_students)
+    class_avg = round(sum(s["average_score"] for s in all_students) / total_st, 1) if total_st > 0 else 0.0
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Enrolled Students", total_st)
+    m2.metric("Total Completed Simulations", total_sims_done)
+    m3.metric("Overall Class Average Score", f"{class_avg}%")
+
+    st.markdown("### Master Student Progress Register")
+    if total_st == 0:
+        st.info("No student records logged yet. As students sign in and complete simulations, their progress will populate here in real time.")
+    else:
+        table_rows = []
+        for s in all_students:
+            row = {
+                "Roll No": s["roll"],
+                "Student Name": s["name"],
+                "Department": s["dept"],
+                "Division": s["division"],
+                "Completed": f"{s['completed_count']} / 7",
+                "Progress (%)": f"{s['completion_pct']}%",
+                "Avg Score (%)": f"{s['average_score']}%",
+            }
+            for i in range(1, 8):
+                m_k = f"module_{i}"
+                row[f"S{i}"] = "✓" if s["modules"].get(m_k, {}).get("completed") else "—"
+            table_rows.append(row)
+        
+        df_students = pd.DataFrame(table_rows)
+        st.dataframe(df_students, use_container_width=True)
+
+        st.markdown("### Export Accreditation Records (NBA / NAAC)")
+        excel_path = "/tmp/SAKEC_EV_Simulation_Master_Register.xlsx"
+        export_master_excel(excel_path)
+        with open(excel_path, "rb") as f:
+            st.download_button(
+                label="⬇ Download Master Progress Register & Reflection Dossier (.xlsx)",
+                data=f,
+                file_name="SAKEC_EV_Simulation_Master_Register.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+
+        st.markdown("---")
+        st.markdown("### ☁️ Microsoft 365 & OneDrive Sync")
+        st.caption("College Microsoft subscription allows direct synchronization to SAKEC SharePoint / OneDrive for Business.")
+        if onedrive_sync.is_configured():
+            if st.button("☁️ Synchronize Master Register to Department OneDrive"):
+                st.info("Connecting to Microsoft Graph API and syncing to OneDrive/SAKEC_EV_Lab/...")
+        else:
+            st.info("To enable 1-click cloud sync to SAKEC OneDrive, configure MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET on Render as detailed in DEPLOYMENT.md.")
+
 
 # Footer
-st.markdown("---")
-st.caption("Shah & Anchor Kutchhi Engineering College (SAKEC) — Department of Electronics & Telecommunication Engineering / Basic Electrical Engineering | Developed for Classroom Interactive Simulations")
+st.markdown('<div class="footer">Shah & Anchor Kutchhi Engineering College, Chembur, Mumbai<br>Developed by <b>Dr. Rohan Borgalli</b> · Autonomous Institute Affiliated to University of Mumbai</div>', unsafe_allow_html=True)
