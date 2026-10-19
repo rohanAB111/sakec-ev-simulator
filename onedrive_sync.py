@@ -5,7 +5,11 @@ Developed by Dr. Rohan Borgalli for Shah & Anchor Kutchhi Engineering College
 """
 
 import os
-import requests
+try:
+    import requests
+    HAS_REQUESTS = True
+except ImportError:
+    HAS_REQUESTS = False
 
 MS_CLIENT_ID = os.getenv("MICROSOFT_CLIENT_ID", "")
 MS_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET", "")

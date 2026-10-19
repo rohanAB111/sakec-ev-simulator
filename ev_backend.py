@@ -8,9 +8,13 @@ import os
 import json
 import time
 import hashlib
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    HAS_OPENPYXL = True
+except ImportError:
+    HAS_OPENPYXL = False
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 RECORDS_FILE = os.path.join(DATA_DIR, "ev_student_records.json")

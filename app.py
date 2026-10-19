@@ -1,24 +1,36 @@
+import os
+import sys
+import time
+
+# Ensure current script directory is in sys.path so local modules are always found on Streamlit Cloud
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
-import time
 
-from ev_quizzes import EV_MODULES_DATA
-from ev_backend import (
-    authenticate_user,
-    add_user,
-    reset_user_password,
-    delete_user,
-    bulk_upload_users_csv,
-    load_users,
-    complete_simulation,
-    get_student_profile,
-    get_all_students_progress,
-    export_master_excel
-)
-import onedrive_sync
+try:
+    from ev_quizzes import EV_MODULES_DATA
+    from ev_backend import (
+        authenticate_user,
+        add_user,
+        reset_user_password,
+        delete_user,
+        bulk_upload_users_csv,
+        load_users,
+        complete_simulation,
+        get_student_profile,
+        get_all_students_progress,
+        export_master_excel
+    )
+    import onedrive_sync
+except Exception as e:
+    st.error(f"⚠️ Startup Module Loading Error: {e}")
+    st.info("Please verify that ev_backend.py, ev_quizzes.py, and onedrive_sync.py are present in the same directory as app.py in your GitHub repository, and that requirements.txt is installed.")
+    st.stop()
 
 # ==========================================
 # PAGE CONFIGURATION & INSTITUTIONAL THEME
