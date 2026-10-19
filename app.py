@@ -78,13 +78,13 @@ st.markdown("""
         margin-top: 6px;
     }
     .main-title {
-        font-size: 2.0rem;
+        font-size: 1.95rem;
         font-weight: 700;
         color: #1E3A8A;
         margin-bottom: 0.2rem;
     }
     .sub-title {
-        font-size: 1.05rem;
+        font-size: 1.0rem;
         color: #4B5563;
         margin-bottom: 1.2rem;
     }
@@ -108,7 +108,7 @@ st.markdown("""
     }
     .reflection-box {
         background: #F8FAFC;
-        border: 2px solid #E2E8F0;
+        border: 2px solid #CBD5E1;
         border-radius: 12px;
         padding: 20px;
         margin-top: 2rem;
@@ -166,12 +166,12 @@ st.markdown("""
 # AUTHENTICATION & LOGIN MANAGEMENT
 # ==========================================
 SAKEC_DEPARTMENTS = [
+    "Electronics & Telecommunication Engineering (EXTC)",
+    "Artificial Intelligence & Data Science (AI&DS)",
     "Computer Engineering",
     "Information Technology",
-    "Artificial Intelligence & Data Science",
-    "Electronics & Computer Science",
+    "Electronics & Computer Science (ECS)",
     "Cyber Security",
-    "Electronics & Telecommunication Engineering (EXTC)",
     "Humanities & Applied Sciences (First Year / FE)",
     "Electronics Engg (VLSI Design & Technology)",
     "Electronics & Comm (Adv Communication Technology)",
@@ -186,59 +186,126 @@ if "logged_in" not in st.session_state:
     st.session_state.user = None
 
 def render_login_screen():
-    st.markdown('<div class="main-title">🔐 EV Simulator Portal Sign In</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Sign in to access interactive EV simulations, submit technical reflections, and record accredited learning outcomes.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🔐 SAKEC EV Simulator Portal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Sign in or register an account to access interactive EV simulations, submit technical reflections, and record accredited learning outcomes.</div>', unsafe_allow_html=True)
 
-    c1, c2 = st.columns([1.2, 1])
-    with c1:
-        st.markdown("#### Enter College Credentials")
-        login_id = st.text_input("College Email ID or Roll Number *", placeholder="e.g. rahul.sharma@sakec.ac.in or 23AIDS102").strip()
-        login_pass = st.text_input("Password *", type="password", placeholder="Enter your password").strip()
+    tab_signin, tab_register = st.tabs([
+        "🔑 Sign In to Existing Account",
+        "📝 Create New Account (Students & Staff)"
+    ])
 
-        st.caption("ℹ️ **Access Policy:** Only students and faculty enrolled by the administrator can access the platform. Default initial password is `firstname@123` (e.g. `rahul@123`). Contact the administrator if you need an account.")
+    with tab_signin:
+        c1, c2 = st.columns([1.2, 1])
+        with c1:
+            st.markdown("#### Enter College Credentials")
+            login_id = st.text_input("College Email ID or Roll Number / Employee ID *", placeholder="e.g. rahul.sharma@sakec.ac.in or 23AIDS102", key="login_id_input").strip()
+            login_pass = st.text_input("Password *", type="password", placeholder="Enter your password", key="login_pass_input").strip()
 
-        if st.button("🚀 Sign In to EV Simulator", type="primary", use_container_width=True):
-            if not login_id or not login_pass:
-                st.error("Please enter both Email/Roll Number and Password.")
-            else:
-                # Lookup by email or roll number
-                users = load_users()
-                target_email = login_id.lower()
-                
-                # Check if user entered roll number instead of email
-                for em, u in users.items():
-                    if u.get("roll", "").upper() == login_id.upper():
-                        target_email = em
-                        break
-                
-                auth_res = authenticate_user(target_email, login_pass)
-                if auth_res["ok"]:
-                    st.session_state.logged_in = True
-                    st.session_state.user = auth_res["user"]
-                    st.success(f"Welcome, {auth_res['user']['name']}! Loading simulation modules...")
-                    st.rerun()
+            st.caption("ℹ️ **Default Credentials:** If your account was enrolled by the administrator, the default initial password is `firstname@123` (e.g. `rahul@123`). If you don't have an account, click the **'Create New Account'** tab above.")
+
+            if st.button("🚀 Sign In to EV Simulator", type="primary", use_container_width=True, key="btn_signin"):
+                if not login_id or not login_pass:
+                    st.error("Please enter both Email/Roll Number and Password.")
                 else:
-                    st.error(auth_res["error"])
+                    users = load_users()
+                    target_email = login_id.lower()
+                    
+                    # Lookup by email or roll/employee number
+                    for em, u in users.items():
+                        if u.get("roll", "").strip().upper() == login_id.strip().upper():
+                            target_email = em
+                            break
+                    
+                    auth_res = authenticate_user(target_email, login_pass)
+                    if auth_res["ok"]:
+                        st.session_state.logged_in = True
+                        st.session_state.user = auth_res["user"]
+                        st.success(f"Welcome, {auth_res['user']['name']}! Loading simulation modules...")
+                        st.rerun()
+                    else:
+                        st.error(auth_res["error"])
 
-        st.markdown("---")
-        st.markdown("**Institutional Single Sign-On (SSO):**")
-        st.caption("College Microsoft 365 accounts allow direct authentication and automated OneDrive report sync.")
-        if st.button("🔑 Sign in with Microsoft 365 (@sakec.ac.in)", use_container_width=True):
-            if onedrive_sync.is_configured():
-                st.info("Redirecting to Microsoft Entra ID college login...")
+            st.markdown("---")
+            st.markdown("**Institutional Single Sign-On (SSO):**")
+            st.caption("College Microsoft 365 accounts allow direct authentication and automated OneDrive report sync.")
+            if st.button("🔑 Sign in with Microsoft 365 (@sakec.ac.in)", use_container_width=True, key="btn_ms_sso"):
+                if onedrive_sync.is_configured():
+                    st.info("Redirecting to Microsoft Entra ID college login...")
+                else:
+                    st.info("Microsoft 365 Note: Once SAKEC IT admin configures MICROSOFT_CLIENT_ID on Render / Streamlit, 1-click SSO will activate. In the meantime, sign in with your college credentials above.")
+
+        with c2:
+            st.info("""
+            **🎓 Student Simulation Workflow:**
+            1. **Sign In or Register:** Use existing credentials or create an account in 30 seconds.
+            2. **Run Simulations:** Test vehicle parameters (speed, mass, drag, motor, battery).
+            3. **Reflect:** Submit your technical reflection explaining physical trade-offs.
+            4. **Complete Simulation:** Click *'Simulation Completed'* to trigger the 5-Question Understanding Check.
+            5. **Pass Requirement:** Must score **at least 3 out of 5 (≥ 60%)** to earn completion credit. If you score < 3, you must re-run the simulation and retry.
+            6. **Track Progress:** Observe your verified completion records in *'My Profile'*.
+            """)
+
+    with tab_register:
+        st.markdown("#### Create a New Student or Staff Account")
+        st.caption("Self-registration is available for all Shah & Anchor Kutchhi Engineering College students and faculty.")
+
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            reg_role = st.selectbox("I am registering as *", ["Student", "Faculty / Staff"], key="reg_role")
+            reg_name = st.text_input("Full Name *", placeholder="e.g. Aditya Patil", key="reg_name").strip()
+            role_code = "student" if reg_role == "Student" else "faculty"
+            id_label = "Roll Number / Student ID *" if role_code == "student" else "Employee ID / Designation *"
+            id_placeholder = "e.g. 23AIDS102 or Roll 16" if role_code == "student" else "e.g. EMP-1042 or Asst. Professor"
+            reg_roll = st.text_input(id_label, placeholder=id_placeholder, key="reg_roll").strip()
+
+        with rc2:
+            reg_email = st.text_input("College / Institutional Email ID *", placeholder="e.g. aditya.patil@sakec.ac.in", key="reg_email").strip().lower()
+            reg_dept = st.selectbox("Department *", SAKEC_DEPARTMENTS, key="reg_dept")
+            div_label = "Class / Division / Batch" if role_code == "student" else "Division / Office"
+            reg_div = st.text_input(div_label, placeholder="e.g. FE Division A or SE EXTC-1", key="reg_div").strip()
+
+        pc1, pc2 = st.columns(2)
+        with pc1:
+            reg_pass1 = st.text_input("Choose Password * (minimum 6 characters)", type="password", key="reg_pass1")
+        with pc2:
+            reg_pass2 = st.text_input("Confirm Password *", type="password", key="reg_pass2")
+
+        if st.button("✨ Register & Create Account", type="primary", use_container_width=True, key="btn_register"):
+            if not reg_name or not reg_email or not reg_roll or not reg_pass1:
+                st.error("Please fill in all required fields marked with *.")
+            elif "@" not in reg_email or "." not in reg_email:
+                st.error("Please enter a valid email address.")
+            elif len(reg_pass1) < 6:
+                st.error("Password must be at least 6 characters long.")
+            elif reg_pass1 != reg_pass2:
+                st.error("Passwords do not match. Please verify both password fields.")
             else:
-                st.info("Microsoft 365 Note: Once SAKEC IT admin configures MICROSOFT_CLIENT_ID on Render, 1-click SSO will activate. In the meantime, sign in with your college credentials above.")
-
-    with c2:
-        st.info("""
-        **🎓 Student Simulation Workflow:**
-        1. **Sign In:** Use your college credentials enrolled by the administrator.
-        2. **Run Simulations:** Test vehicle parameters (speed, mass, drag, motor, battery).
-        3. **Reflect:** Submit your technical reflection explaining physical trade-offs.
-        4. **Complete Simulation:** Click *'Simulation Completed'* to trigger the 5-Question Understanding Check.
-        5. **Pass Requirement:** Must score **at least 3 out of 5 (>= 60%)** to earn completion credit. If you score < 3, you must re-run the simulation and retry.
-        6. **Track Progress:** Observe your verified completion records in *'My Profile'*.
-        """)
+                users = load_users()
+                if reg_email in users:
+                    st.error("An account with this email already exists. Please go to the 'Sign In' tab.")
+                else:
+                    u_rec, _ = add_user(
+                        name=reg_name,
+                        roll=reg_roll,
+                        email=reg_email,
+                        role=role_code,
+                        dept=reg_dept,
+                        division=reg_div,
+                        custom_pass=reg_pass1
+                    )
+                    st.session_state.logged_in = True
+                    st.session_state.user = {
+                        "name": u_rec["name"],
+                        "roll": u_rec.get("roll", "—"),
+                        "email": u_rec["email"],
+                        "role": u_rec["role"],
+                        "dept": u_rec.get("dept", "SAKEC"),
+                        "division": u_rec.get("division", "—")
+                    }
+                    st.balloons()
+                    st.success(f"🎉 Account created successfully! Welcome, {reg_name} ({reg_role}). Redirecting to simulation portal...")
+                    time.sleep(1)
+                    st.rerun()
 
 if not st.session_state.logged_in:
     render_login_screen()
@@ -249,10 +316,19 @@ if not st.session_state.logged_in:
 # SIDEBAR NAVIGATION & ROLE RESTRICTIONS
 # ==========================================
 user = st.session_state.user
-is_admin = (user.get("role") == "admin")
+user_role = user.get("role", "student").lower()
+is_admin = (user_role == "admin")
+is_staff = (user_role in ["admin", "faculty", "staff"])
 
-user_badge = ("👨‍🎓 " + user["name"]) if user.get("role") == "student" else ("🛡️ " + user["name"] + " (Admin)")
-dept_badge = user.get("roll", "Faculty") + " · " + user.get("dept", "SAKEC")
+if is_admin:
+    role_icon = "🛡️ Admin: "
+elif is_staff:
+    role_icon = "👨‍🏫 Faculty: "
+else:
+    role_icon = "👨‍🎓 Student: "
+
+user_badge = role_icon + user["name"]
+dept_badge = user.get("roll", "SAKEC") + " · " + user.get("dept", "SAKEC")
 
 st.sidebar.markdown(f"""
 <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:10px; padding:12px; margin-bottom:14px;">
@@ -270,21 +346,8 @@ if st.sidebar.button("🚪 Sign Out", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.title("EV Module Navigator")
 
-# Strictly filter navigation options by role
-if user.get("role") == "student":
-    # Students ONLY see simulations and their own profile
-    lecture_options = [
-        "1️⃣ Module 1: Vehicle Dynamics & Tractive Force",
-        "2️⃣ Module 2: Electric Traction Motors & Drives",
-        "3️⃣ Module 3: Battery Chemistries & Range Sizing",
-        "4️⃣ Module 4: Regenerative Braking & Energy Flow",
-        "5️⃣ Module 5: EV Charging Infrastructure & CC-CV",
-        "6️⃣ Module 6: Well-to-Wheel (WTW) Decarbonization",
-        "7️⃣ Module 7: Total Cost of Ownership (TCO)",
-        "👤 My Learning Progress & Portfolio"
-    ]
-else:
-    # Admin / Faculty sees all simulations, profile, and Admin Dashboard
+# Navigation options based on role
+if is_staff:
     lecture_options = [
         "📌 Course Overview & EV Architecture",
         "1️⃣ Module 1: Vehicle Dynamics & Tractive Force",
@@ -294,8 +357,21 @@ else:
         "5️⃣ Module 5: EV Charging Infrastructure & CC-CV",
         "6️⃣ Module 6: Well-to-Wheel (WTW) Decarbonization",
         "7️⃣ Module 7: Total Cost of Ownership (TCO)",
+        "📝 Module 8: Comprehensive EV Concept Check",
         "👤 My Learning Progress & Portfolio",
-        "🛡️ Admin Dashboard & User Management"
+        "🛡️ Admin & Faculty Dashboard"
+    ]
+else:
+    lecture_options = [
+        "1️⃣ Module 1: Vehicle Dynamics & Tractive Force",
+        "2️⃣ Module 2: Electric Traction Motors & Drives",
+        "3️⃣ Module 3: Battery Chemistries & Range Sizing",
+        "4️⃣ Module 4: Regenerative Braking & Energy Flow",
+        "5️⃣ Module 5: EV Charging Infrastructure & CC-CV",
+        "6️⃣ Module 6: Well-to-Wheel (WTW) Decarbonization",
+        "7️⃣ Module 7: Total Cost of Ownership (TCO)",
+        "📝 Module 8: Comprehensive EV Concept Check",
+        "👤 My Learning Progress & Portfolio"
     ]
 
 selected_lecture = st.sidebar.selectbox("Select Learning Module:", lecture_options)
@@ -344,7 +420,6 @@ else:
     default_motor_t = 200.0
     default_voltage = 300.0
 
-
 # ==========================================
 # POST-SIMULATION REFLECTION & 5-QUESTION CHECK
 # (Pass Threshold: >= 3/5 Correct Required)
@@ -378,14 +453,15 @@ def render_post_simulation_block(module_key, module_title, tested_params):
         "Enter your engineering reflection (explain observed trade-offs, curves, and physical reasoning):",
         value=prev_ref,
         height=130,
-        placeholder="Explain how changing speed, weight, frontal area, or battery capacity affected tractive power demand and efficiency based on your simulation runs...",
+        placeholder="Explain how changing speed, weight, frontal area, battery capacity, or charging C-rate affected the curves and performance in your simulation...",
         key=f"ref_text_{module_key}"
     )
 
-    # Trigger to show 5 questions
+    # State key for showing questions
     quiz_session_key = f"quiz_active_{module_key}"
     if quiz_session_key not in st.session_state:
-        st.session_state[quiz_session_key] = False
+        # For faculty/admin or if already completed, show questions by default
+        st.session_state[quiz_session_key] = is_already_completed or is_staff
 
     if not is_already_completed and not st.session_state[quiz_session_key]:
         if st.button("✅ Simulation Completed — Start 5-Question Understanding Check", type="primary", key=f"btn_complete_{module_key}"):
@@ -396,8 +472,9 @@ def render_post_simulation_block(module_key, module_title, tested_params):
                 st.rerun()
 
     # 2. Render 5 Understanding Questions
-    if is_already_completed or st.session_state.get(quiz_session_key, False):
-        st.markdown("#### 2. Understanding Verification Check (5 Questions — Pass: 3/5)")
+    if is_already_completed or st.session_state.get(quiz_session_key, False) or is_staff:
+        st.markdown("---")
+        st.markdown("#### 2. Understanding Verification Check (5 Questions — Pass: 3/5 Correct)")
         questions = mod_data.get("questions", [])
         total_q = len(questions)
         user_choices = {}
@@ -405,16 +482,23 @@ def render_post_simulation_block(module_key, module_title, tested_params):
         for q_idx, q in enumerate(questions):
             st.markdown(f'<div class="quiz-card"><b>Question {q_idx+1} of {total_q}:</b> {q["q"]}</div>', unsafe_allow_html=True)
             ans = st.radio(
-                "Select your answer:",
+                f"Select answer for Q{q_idx+1}:",
                 q["options"],
                 key=f"quiz_opt_{module_key}_{q_idx}",
                 label_visibility="collapsed"
             )
             user_choices[q_idx] = q["options"].index(ans)
 
+        # Faculty / Admin solution key preview
+        if is_staff:
+            with st.expander("👁️ Faculty / Admin Solution Key & Rationale (Reference for Teaching)"):
+                for q_idx, q in enumerate(questions):
+                    st.markdown(f"**Q{q_idx+1}:** Correct: **{q['options'][q['correct']]}**")
+                    st.caption(f"Explanation: {q['explain']}")
+
         if st.button(f"Submit 5 Questions for Grading", type="primary", key=f"btn_grade_{module_key}"):
             if not reflection_text or len(reflection_text.strip()) < 20:
-                st.error("Please enter your engineering reflection above before submitting.")
+                st.error("Please enter your engineering reflection above (minimum 20 characters) before submitting.")
                 return
 
             score = 0
@@ -446,9 +530,11 @@ def render_post_simulation_block(module_key, module_title, tested_params):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
+
+# ==========================================
 # MODULE 0: OVERVIEW & ARCHITECTURE
 # ==========================================
-if selected_lecture == "📌 Course Overview & EV Architecture":
+if "Overview" in selected_lecture:
     st.markdown('<div class="lecture-badge">MODULE 0</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Introduction to Electric Vehicle Systems</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Understanding EV Taxonomy, Powertrain Topologies, and Component Interconnections</div>', unsafe_allow_html=True)
@@ -458,10 +544,10 @@ if selected_lecture == "📌 Course Overview & EV Architecture":
         st.subheader("1. Vehicle Powertrain Comparison")
         st.markdown("""
         Vehicles are classified by their degree of electrification and energy conversion pathways:
-        * **ICE (Internal Combustion Engine):** 100% fossil fuel reliant. Tank-to-wheel thermal efficiency is typically low ($pprox 18-24\%$).
-        * **HEV (Hybrid Electric Vehicle):** Combines an ICE engine with an auxiliary electric motor and small battery ($\sim 1-2	ext{ kWh}$). Charges strictly via regenerative braking and engine generation; cannot be plugged in.
-        * **PHEV (Plug-in Hybrid):** Features a moderate battery pack ($\sim 10-18	ext{ kWh}$) capable of pure electric range for 40–70 km, with an ICE backup for long journeys.
-        * **BEV (Battery Electric Vehicle):** Pure zero-emission electric powertrain. High battery capacity ($\sim 30-100+	ext{ kWh}$), electric traction motor, bi-directional inverter, and high-efficiency single-speed reduction transmission.
+        * **ICE (Internal Combustion Engine):** 100% fossil fuel reliant. Tank-to-wheel thermal efficiency is typically low (~ 18-24%).
+        * **HEV (Hybrid Electric Vehicle):** Combines an ICE engine with an auxiliary electric motor and small battery (~ 1-2 kWh). Charges strictly via regenerative braking and engine generation; cannot be plugged in.
+        * **PHEV (Plug-in Hybrid):** Features a moderate battery pack (~ 10-18 kWh) capable of pure electric range for 40–70 km, with an ICE backup for long journeys.
+        * **BEV (Battery Electric Vehicle):** Pure zero-emission electric powertrain. High battery capacity (~ 30-100+ kWh), electric traction motor, bi-directional inverter, and high-efficiency single-speed reduction transmission.
         * **FCEV (Fuel Cell Electric Vehicle):** Hydrogen gas compressed at 700 bar feeds a proton-exchange membrane (PEM) fuel cell to generate electricity for an electric motor, with pure water vapor as exhaust.
         """)
 
@@ -469,13 +555,13 @@ if selected_lecture == "📌 Course Overview & EV Architecture":
         st.subheader("2. Core High-Voltage EV Components")
         st.markdown("""
         Every BEV integrates key subsystems:
-        1. **Traction Battery Pack:** High-voltage DC source ($48	ext{V} - 800	ext{V}$).
+        1. **Traction Battery Pack:** High-voltage DC source (48V - 800V).
         2. **Power Electronic Inverter (PEU):** Converts DC from the battery to variable-frequency 3-phase AC for the motor.
         3. **Electric Traction Motor:** Converts electrical energy to mechanical wheel torque.
-        4. **Single-Speed Reduction Gearbox:** High-efficiency gear reduction ($8:1$ to $10:1$) with differential.
-        5. **DC-DC Converter:** Steps down High Voltage ($300	ext{V}+$) to Low Voltage ($12	ext{V}$) for headlights, wipers, and ECUs.
+        4. **Single-Speed Reduction Gearbox:** High-efficiency gear reduction (8:1 to 10:1) with differential.
+        5. **DC-DC Converter:** Steps down High Voltage (300V+) to Low Voltage (12V) for headlights, wipers, and ECUs.
         6. **On-Board Charger (OBC):** Converts external AC grid power to DC to charge the pack.
-        7. **Thermal Management System:** Active coolant loops maintaining cell temperatures between $20^\circ	ext{C} - 35^\circ	ext{C}$.
+        7. **Thermal Management System:** Active coolant loops maintaining cell temperatures between 20°C - 35°C.
         """)
 
     st.subheader("3. Component Efficiency Cascade")
@@ -492,8 +578,8 @@ if selected_lecture == "📌 Course Overview & EV Architecture":
 # ==========================================
 # MODULE 1: VEHICLE LONGITUDINAL DYNAMICS
 # ==========================================
-elif selected_lecture == "1️⃣ Lecture 1: Vehicle Dynamics & Tractive Force":
-    st.markdown('<div class="lecture-badge">LECTURE 1</div>', unsafe_allow_html=True)
+elif "Module 1" in selected_lecture or "Dynamics" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 1</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Vehicle Dynamics & Tractive Effort Sizing</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Newtonian Mechanics Applied to Vehicle Motion & Motor Sizing</div>', unsafe_allow_html=True)
 
@@ -505,9 +591,9 @@ elif selected_lecture == "1️⃣ Lecture 1: Vehicle Dynamics & Tractive Force":
         m = st.slider("Vehicle Total Mass ($m$ in kg):", 100, 18000, int(default_mass), step=50)
         v_kmh = st.slider("Cruising Speed ($v$ in km/h):", 0, 160, 60, step=5)
         grade_pct = st.slider("Road Incline / Grade (%):", 0.0, 20.0, 0.0, step=0.5)
-        accel = st.slider("Linear Acceleration ($a$ in $\text{m/s}^2$):", 0.0, 3.5, 0.0, step=0.1)
+        accel = st.slider("Linear Acceleration ($a$ in m/s²):", 0.0, 3.5, 0.0, step=0.1)
         cd = st.slider("Aerodynamic Drag Coeff ($C_d$):", 0.20, 0.85, float(default_cd), step=0.01)
-        af = st.slider("Frontal Area ($A_f$ in $\text{m}^2$):", 0.5, 8.0, float(default_area), step=0.1)
+        af = st.slider("Frontal Area ($A_f$ in m²):", 0.5, 8.0, float(default_area), step=0.1)
         crr = st.slider("Rolling Resistance Coeff ($C_{rr}$):", 0.008, 0.025, float(default_crr), step=0.001)
         eta_trans = st.slider("Transmission Efficiency ($\eta$):", 0.80, 0.98, 0.95, step=0.01)
 
@@ -569,12 +655,26 @@ elif selected_lecture == "1️⃣ Lecture 1: Vehicle Dynamics & Tractive Force":
 
     st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> Notice how aerodynamic drag increases with $v^2$, meaning motor power demand increases with $v^3$. At city speeds (&lt; 45 km/h), rolling resistance and vehicle weight dominate. At highway speeds (&gt; 80 km/h), aerodynamic drag consumes over 60% of total energy.</div>', unsafe_allow_html=True)
 
+    # Post-simulation reflection and 5-question check
+    tested_params_1 = {
+        "mass_kg": m,
+        "speed_kmh": v_kmh,
+        "grade_pct": grade_pct,
+        "accel_ms2": accel,
+        "drag_coeff": cd,
+        "frontal_area_m2": af,
+        "rolling_coeff": crr,
+        "tractive_force_N": round(float(f_te), 1),
+        "motor_power_kW": round(float(p_motor_kw), 2)
+    }
+    render_post_simulation_block("module_1", "1️⃣ Vehicle Dynamics & Tractive Force", tested_params_1)
+
 
 # ==========================================
 # MODULE 2: ELECTRIC MOTORS & DRIVES
 # ==========================================
-elif selected_lecture == "2️⃣ Lecture 2: Electric Traction Motors & Drives":
-    st.markdown('<div class="lecture-badge">LECTURE 2</div>', unsafe_allow_html=True)
+elif "Module 2" in selected_lecture or "Motors" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 2</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Electric Traction Motors & Torque-Speed Curves</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Constant Torque vs. Field-Weakening Constant Power Regimes</div>', unsafe_allow_html=True)
 
@@ -582,8 +682,8 @@ elif selected_lecture == "2️⃣ Lecture 2: Electric Traction Motors & Drives":
     with c1:
         st.subheader("Traction Motor Parameters")
         motor_type = st.selectbox("Motor Topology:", ["PMSM (Permanent Magnet Synchronous)", "BLDC (Brushless DC)", "Induction Motor (IM)"])
-        p_rated_kw = st.slider("Rated Motor Power ($P_{\text{rated}}$ in kW):", 5.0, 300.0, float(default_motor_p), step=5.0)
-        t_max_nm = st.slider("Peak Stall Torque ($T_{\text{max}}$ in Nm):", 20.0, 600.0, float(default_motor_t), step=10.0)
+        p_rated_kw = st.slider("Rated Motor Power ($P_{\text{rated}}$ in kW):", 5.0, 350.0, float(default_motor_p), step=1.0)
+        t_max_nm = st.slider("Peak Stall Torque ($T_{\text{max}}$ in Nm):", 20.0, 1500.0, float(default_motor_t), step=5.0)
         n_base = st.slider("Base Speed ($N_b$ in RPM):", 1000, 6000, 3500, step=250)
         n_max = st.slider("Maximum Speed ($N_{\text{max}}$ in RPM):", 6000, 16000, 11000, step=500)
         gear_ratio = st.slider("Single-Speed Gear Reduction ($G_r$):", 4.0, 12.0, 9.0, step=0.2)
@@ -601,7 +701,6 @@ elif selected_lecture == "2️⃣ Lecture 2: Electric Traction Motors & Drives":
             power_arr[i] = (torque_arr[i] * omega) / 1000.0
         else:
             omega = (2 * np.pi * rpm) / 60.0
-            # Constant power region
             p_val = p_rated_kw
             power_arr[i] = p_val
             torque_arr[i] = (p_val * 1000.0) / omega
@@ -646,12 +745,25 @@ elif selected_lecture == "2️⃣ Lecture 2: Electric Traction Motors & Drives":
 
     st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> Unlike an internal combustion engine that produces zero torque at 0 RPM and requires a clutch and 5-6 gears, an electric traction motor produces <b>maximum torque right from stall</b> (0 RPM). This enables rapid off-the-line acceleration with a single fixed reduction ratio!</div>', unsafe_allow_html=True)
 
+    tested_params_2 = {
+        "motor_type": motor_type,
+        "rated_power_kW": p_rated_kw,
+        "peak_torque_Nm": t_max_nm,
+        "base_speed_rpm": n_base,
+        "max_speed_rpm": n_max,
+        "gear_ratio": gear_ratio,
+        "wheel_radius_m": wheel_radius_m,
+        "wheel_torque_peak_Nm": round(float(wheel_torque_peak), 1),
+        "top_speed_kmh": round(float(max_wheel_speed_kmh), 1)
+    }
+    render_post_simulation_block("module_2", "2️⃣ Electric Traction Motors & Drives", tested_params_2)
+
 
 # ==========================================
 # MODULE 3: BATTERY CHEMISTRIES & SIZING
 # ==========================================
-elif selected_lecture == "3️⃣ Lecture 3: Battery Chemistries & Range Sizing":
-    st.markdown('<div class="lecture-badge">LECTURE 3</div>', unsafe_allow_html=True)
+elif "Module 3" in selected_lecture or "Battery" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 3</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Battery Pack Sizing & Range Estimation</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Cell Chemistries, S-P Combinations, and Energy Consumption (Wh/km)</div>', unsafe_allow_html=True)
 
@@ -679,14 +791,13 @@ elif selected_lecture == "3️⃣ Lecture 3: Battery Chemistries & Range Sizing"
             cycle_life = 400
             chem_color = "dimgray"
 
-        target_energy_kwh = st.slider("Target Pack Capacity ($E_{\text{pack}}$ in kWh):", 2.0, 120.0, float(default_batt), step=1.0)
+        target_energy_kwh = st.slider("Target Pack Capacity ($E_{\text{pack}}$ in kWh):", 2.0, 300.0, float(default_batt), step=0.5)
         dod_pct = st.slider("Usable Depth of Discharge (DoD %):", 70, 95, 85, step=1)
         ac_hvac = st.radio("Cabin Climate Control (HVAC):", ["Off", "Eco Mode (+10% load)", "Max Cooling (+25% load)"])
         avg_speed = st.slider("Average Driving Speed (km/h):", 30, 110, 50, step=5)
 
     # Calculations
     hvac_factor = 1.0 if ac_hvac == "Off" else (1.10 if "Eco" in ac_hvac else 1.25)
-    # Empirical Wh/km model based on mass and speed
     base_wh_km = (0.05 * default_mass) + (0.007 * (avg_speed ** 1.7))
     total_wh_km = base_wh_km * hvac_factor
 
@@ -719,7 +830,6 @@ elif selected_lecture == "3️⃣ Lecture 3: Battery Chemistries & Range Sizing"
         # Chemistry bar chart comparison
         chem_labels = ["LFP", "NMC", "Lead-Acid"]
         densities = [150, 230, 35]
-        cycles = [3000, 1200, 400]
         ax2.bar(chem_labels, densities, color=["green", "royalblue", "dimgray"], alpha=0.7)
         ax2.set_ylabel("Specific Energy (Wh/kg)")
         ax2.set_title("Chemistry Energy Density Comparison")
@@ -729,19 +839,32 @@ elif selected_lecture == "3️⃣ Lecture 3: Battery Chemistries & Range Sizing"
 
     st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> LFP is dominant in Indian electric cars because of its superior <b>thermal stability</b> (runaway onset &gt; 270°C vs 210°C for NMC) and longer cycle life (3000+ charges), even though NMC offers higher energy density. Notice also the "Weight Spiral": adding battery capacity makes the car heavier, progressively reducing incremental range gains!</div>', unsafe_allow_html=True)
 
+    tested_params_3 = {
+        "chemistry": chemistry,
+        "nominal_cell_V": v_cell_nom,
+        "target_pack_kWh": target_energy_kwh,
+        "dod_pct": dod_pct,
+        "hvac_mode": ac_hvac,
+        "avg_speed_kmh": avg_speed,
+        "est_range_km": round(float(est_range_km), 1),
+        "est_pack_weight_kg": round(float(est_pack_weight_kg), 1),
+        "consumption_wh_km": round(float(total_wh_km), 1)
+    }
+    render_post_simulation_block("module_3", "3️⃣ Battery Chemistries & Range Sizing", tested_params_3)
+
 
 # ==========================================
 # MODULE 4: REGENERATIVE BRAKING
 # ==========================================
-elif selected_lecture == "4️⃣ Lecture 4: Regenerative Braking & Energy Flow":
-    st.markdown('<div class="lecture-badge">LECTURE 4</div>', unsafe_allow_html=True)
+elif "Module 4" in selected_lecture or "Regenerative" in selected_lecture or "Braking" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 4</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Regenerative Braking & Energy Recovery</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Bi-Directional Power Flow and Brake Force Blending</div>', unsafe_allow_html=True)
 
     c1, c2 = st.columns([1, 2])
     with c1:
         st.subheader("Braking Simulation Inputs")
-        m_brake = st.slider("Vehicle Mass ($m$ in kg):", 150, 16000, int(default_mass), step=50)
+        m_brake = st.slider("Vehicle Mass ($m$ in kg):", 150, 18000, int(default_mass), step=50)
         v_init_kmh = st.slider("Initial Velocity ($v_1$ in km/h):", 20, 120, 60, step=5)
         v_final_kmh = st.slider("Final Velocity ($v_2$ in km/h):", 0, 80, 0, step=5)
         decel_g = st.slider("Braking Deceleration ($g$ units):", 0.05, 0.80, 0.18, step=0.01)
@@ -755,7 +878,6 @@ elif selected_lecture == "4️⃣ Lecture 4: Regenerative Braking & Energy Flow"
 
     # Regen limit logic: if SoC > 95%, regen is throttled to prevent overcharge
     regen_throttle = 1.0 if current_soc < 90 else max(0.0, (98 - current_soc) / 8.0)
-    # Fraction of regen vs friction based on deceleration rate
     if decel_g <= 0.20:
         f_regen_frac = 0.90 * regen_throttle
     elif decel_g <= 0.40:
@@ -788,12 +910,25 @@ elif selected_lecture == "4️⃣ Lecture 4: Regenerative Braking & Energy Flow"
 
     st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> In highway cruising, regen recovers only 5–8% of energy because braking is rare. In congested city traffic (like Mumbai), continuous stop-and-go driving recovers <b>15% to 25% of energy</b>, making electric vehicles uniquely more efficient in city traffic than on highways!</div>', unsafe_allow_html=True)
 
+    tested_params_4 = {
+        "vehicle_mass_kg": m_brake,
+        "v_initial_kmh": v_init_kmh,
+        "v_final_kmh": v_final_kmh,
+        "decel_g": decel_g,
+        "battery_soc_pct": current_soc,
+        "kinetic_energy_dissipated_kJ": round(float(ke_dissipated_kj), 1),
+        "energy_recovered_Wh": round(float(recovered_wh), 2),
+        "regen_share_pct": round(float(f_regen_frac * 100), 1),
+        "friction_heat_loss_kJ": round(float(friction_heat_kj), 1)
+    }
+    render_post_simulation_block("module_4", "4️⃣ Regenerative Braking & Energy Flow", tested_params_4)
+
 
 # ==========================================
 # MODULE 5: EV CHARGING INFRASTRUCTURE & CC-CV
 # ==========================================
-elif selected_lecture == "5️⃣ Lecture 5: EV Charging Infrastructure & CC-CV":
-    st.markdown('<div class="lecture-badge">LECTURE 5</div>', unsafe_allow_html=True)
+elif "Module 5" in selected_lecture or "Charging" in selected_lecture or "CC-CV" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 5</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">EV Charging Dynamics & CC-CV Profiles</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">AC Level 1/2 vs DC Fast Charging, C-Rate, and the 80% Taper Curve</div>', unsafe_allow_html=True)
 
@@ -804,7 +939,7 @@ elif selected_lecture == "5️⃣ Lecture 5: EV Charging Infrastructure & CC-CV"
             "Charger Standard:",
             ["Standard 15A Home Socket (AC 3.3 kW)", "AC Wallbox (7.2 kW Type 2)", "Commercial AC Fast (22 kW)", "DC Fast Charger (50 kW CCS2)", "Ultra-Fast DC (120 kW CCS2)"]
         )
-        pack_size = st.slider("Battery Capacity (kWh):", 3.0, 150.0, float(default_batt), step=1.0)
+        pack_size = st.slider("Battery Capacity (kWh):", 3.0, 300.0, float(default_batt), step=1.0)
         soc_start = st.slider("Starting SoC (%):", 0, 80, 10, step=5)
         soc_target = st.slider("Target SoC (%):", soc_start + 10, 100, 100, step=5)
 
@@ -829,9 +964,8 @@ elif selected_lecture == "5️⃣ Lecture 5: EV Charging Infrastructure & CC-CV"
     power_profile = np.zeros_like(soc_timeline)
     for i, s in enumerate(soc_timeline):
         if s <= 80:
-            power_profile[i] = p_chg  # Constant current / full power
+            power_profile[i] = p_chg
         else:
-            # Tapering during CV phase
             taper_factor = (100 - s) / 20.0
             power_profile[i] = max(p_chg * 0.20, p_chg * taper_factor)
 
@@ -864,12 +998,24 @@ elif selected_lecture == "5️⃣ Lecture 5: EV Charging Infrastructure & CC-CV"
 
     st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> Notice how charging power aggressively drops after 80% SoC in the Constant Voltage (CV) phase to prevent cell overheating and lithium plating. This explains why highway EV route planners advise charging only up to 80% at fast chargers before continuing your journey!</div>', unsafe_allow_html=True)
 
+    tested_params_5 = {
+        "charger_type": charger_type,
+        "pack_size_kWh": pack_size,
+        "soc_start_pct": soc_start,
+        "soc_target_pct": soc_target,
+        "charging_power_kW": p_chg,
+        "time_cc_mins": round(float(time_cc_hr * 60), 0),
+        "time_cv_mins": round(float(time_cv_hr * 60), 0),
+        "total_time_mins": round(float(total_time_hr * 60), 0)
+    }
+    render_post_simulation_block("module_5", "5️⃣ EV Charging Infrastructure & CC-CV", tested_params_5)
+
 
 # ==========================================
 # MODULE 6: WELL-TO-WHEEL (WTW) DECARBONIZATION
 # ==========================================
-elif selected_lecture == "6️⃣ Lecture 6: Well-to-Wheel (WTW) Decarbonization":
-    st.markdown('<div class="lecture-badge">LECTURE 6</div>', unsafe_allow_html=True)
+elif "Module 6" in selected_lecture or "Decarbonization" in selected_lecture or "WTW" in selected_lecture or "Well-to-Wheel" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 6</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Well-to-Wheel (WTW) Life-Cycle Emissions</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Debunking the "Dirty Grid" Fallacy: Indian Grid Baseline vs. Petrol/Diesel</div>', unsafe_allow_html=True)
 
@@ -892,8 +1038,6 @@ elif selected_lecture == "6️⃣ Lecture 6: Well-to-Wheel (WTW) Decarbonization
 
     wtw_ice = ttw_ice + wtt_ice
 
-    # EV calculations
-    # Account for 18% T&D loss on grid + 10% charger loss
     grid_effective_kwh = (ev_consumption_wh_km / 1000.0) / (0.82 * 0.90)
     wtw_ev = grid_effective_kwh * ev_grid_intensity
     pct_reduction = ((wtw_ice - wtw_ev) / wtw_ice) * 100.0
@@ -905,7 +1049,6 @@ elif selected_lecture == "6️⃣ Lecture 6: Well-to-Wheel (WTW) Decarbonization
         e2.metric("EV Emissions (WTW)", f"{wtw_ev:.1f} g/km", f"{ev_grid_intensity} g CO2/kWh")
         e3.metric("Net CO2 Reduction", f"{pct_reduction:.1f}%", "Lower Emissions")
 
-        # Bar comparison
         fig, ax = plt.subplots(figsize=(8, 4))
         categories = ["ICE Total (WTW)", "EV (Indian Grid 710 g)", "EV (Clean Solar 40 g)"]
         ev_solar = grid_effective_kwh * 40.0
@@ -922,14 +1065,24 @@ elif selected_lecture == "6️⃣ Lecture 6: Well-to-Wheel (WTW) Decarbonization
         ax.grid(True, alpha=0.3, axis='y')
         st.pyplot(fig)
 
-    st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> Even when charged from India\'s coal-dominant national grid (710 g CO2/kWh), an EV emits <b>30% to 45% less CO2 per km</b> than a petrol vehicle. This is because large power plants and electric motors operate at ~40% and ~95% efficiencies, whereas car petrol engines operate at only ~20% in city traffic. When solar/renewable power is used, emissions drop by over 95%!</div>', unsafe_allow_html=True)
+    st.markdown('''<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> Even when charged from India's coal-dominant national grid (710 g CO2/kWh), an EV emits <b>30% to 45% less CO2 per km</b> than a petrol vehicle. This is because large power plants and electric motors operate at ~40% and ~95% efficiencies, whereas car petrol engines operate at only ~20% in city traffic. When solar/renewable power is used, emissions drop by over 95%!</div>''', unsafe_allow_html=True)
+
+    tested_params_6 = {
+        "benchmark_ice": ice_type,
+        "grid_intensity_g_co2_kwh": ev_grid_intensity,
+        "ev_consumption_wh_km": ev_consumption_wh_km,
+        "wtw_ice_g_km": round(float(wtw_ice), 1),
+        "wtw_ev_g_km": round(float(wtw_ev), 1),
+        "net_co2_reduction_pct": round(float(pct_reduction), 1)
+    }
+    render_post_simulation_block("module_6", "6️⃣ Well-to-Wheel (WTW) Decarbonization", tested_params_6)
 
 
 # ==========================================
 # MODULE 7: TOTAL COST OF OWNERSHIP (TCO)
 # ==========================================
-elif selected_lecture == "7️⃣ Lecture 7: Total Cost of Ownership (TCO)":
-    st.markdown('<div class="lecture-badge">LECTURE 7</div>', unsafe_allow_html=True)
+elif "Module 7" in selected_lecture or "Ownership" in selected_lecture or "TCO" in selected_lecture:
+    st.markdown('<div class="lecture-badge">MODULE 7</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Total Cost of Ownership & Economic Break-Even</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Evaluating Capital Expenditure (CapEx) vs. Operating Expenditure (OpEx)</div>', unsafe_allow_html=True)
 
@@ -963,7 +1116,6 @@ elif selected_lecture == "7️⃣ Lecture 7: Total Cost of Ownership (TCO)":
         f2.metric("EV Running Cost", f"₹{total_ev_per_km:.2f} / km", f"Electricity: ₹{ev_cost_per_km:.2f}")
         f3.metric("Break-Even Distance", f"{breakeven_km:,.0f} km", f"≈ {payback_years:.1f} Years")
 
-        # 10-year projection graph
         years = np.arange(0, 11)
         dist_cum = years * annual_km
         cost_ice_cum = dist_cum * total_ice_per_km
@@ -983,14 +1135,25 @@ elif selected_lecture == "7️⃣ Lecture 7: Total Cost of Ownership (TCO)":
 
     st.markdown('<div class="takeaway-box"><b>Key Pedagogical Takeaway:</b> Although an EV has a higher upfront initial purchase price (CapEx), its operating cost (OpEx) is roughly <b>75% lower</b> than a petrol car. For commercial fleet operators (like taxis or delivery services driving 150+ km/day), the break-even is achieved in less than 1.5 years!</div>', unsafe_allow_html=True)
 
-
-# ==========================================
+    tested_params_7 = {
+        "annual_km": annual_km,
+        "petrol_price_rs": petrol_price,
+        "ice_mileage_km_l": ice_mileage,
+        "electricity_tariff_rs": electricity_tariff,
+        "ev_wh_km": ev_wh_km,
+        "capex_diff_rs": capex_diff,
+        "ice_running_cost_rs_km": round(float(total_ice_per_km), 2),
+        "ev_running_cost_rs_km": round(float(total_ev_per_km), 2),
+        "breakeven_km": round(float(breakeven_km), 0),
+        "payback_years": round(float(payback_years), 1)
+    }
+    render_post_simulation_block("module_7", "7️⃣ Total Cost of Ownership (TCO)", tested_params_7)
 
 
 # ==========================================
 # MODULE 8: INTERACTIVE CLASSROOM QUIZ
 # ==========================================
-elif selected_lecture == "📝 Lecture 8: Classroom Interactive Concept Check":
+elif "Module 8" in selected_lecture or "Concept Check" in selected_lecture:
     st.markdown('<div class="lecture-badge">MODULE 8</div>', unsafe_allow_html=True)
     st.markdown('<div class="main-title">Comprehensive EV Concept Check</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Test Your Mastery Across All 7 EV Physics & Engineering Modules</div>', unsafe_allow_html=True)
@@ -1016,7 +1179,7 @@ elif selected_lecture == "📝 Lecture 8: Classroom Interactive Concept Check":
 # ==========================================
 # STUDENT PROFILE & LEARNING PORTFOLIO VIEW
 # ==========================================
-elif selected_lecture == "👤 My Learning Progress & Portfolio":
+elif "Profile" in selected_lecture or "Portfolio" in selected_lecture:
     st.markdown('<div class="main-title">👤 Student Learning Profile &amp; EV Portfolio</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Official Laboratory Record · Shah &amp; Anchor Kutchhi Engineering College</div>', unsafe_allow_html=True)
 
@@ -1035,7 +1198,7 @@ elif selected_lecture == "👤 My Learning Progress & Portfolio":
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Student Name", prof.get("name", user["name"]))
-    c2.metric("Roll Number", prof.get("roll", "—"))
+    c2.metric("Roll / ID", prof.get("roll", user.get("roll", "—")))
     c3.metric("Simulations Completed", f"{completed_count} / 7")
     c4.metric("Avg Pass Score", f"{avg_score}%")
 
@@ -1067,16 +1230,15 @@ elif selected_lecture == "👤 My Learning Progress & Portfolio":
 
 
 # ==========================================
-# ADMIN DASHBOARD & USER ROSTER MANAGEMENT
-# (Only Admin Can Access)
+# ADMIN & FACULTY DASHBOARD & USER ROSTER
 # ==========================================
-elif selected_lecture == "🛡️ Admin Dashboard & User Management":
-    if not is_admin:
-        st.error("Access Restricted: Only college administrators can access the User Management & Master Progress Portal.")
+elif "Admin" in selected_lecture or "Dashboard" in selected_lecture:
+    if not is_staff:
+        st.error("Access Restricted: Only college faculty and administrators can access the Progress Register and User Management Portal.")
         st.stop()
 
-    st.markdown('<div class="main-title">🛡️ Administrator Portal &amp; Student Progress</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Continuous Internal Assessment (NBA Criterion 2.2.1) · Student Roster &amp; Password Management</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🛡️ Faculty &amp; Administrator Portal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Continuous Internal Assessment (NBA Criterion 2.2.1) · Student Roster &amp; Learning Progress Register</div>', unsafe_allow_html=True)
 
     tab_overview, tab_users, tab_reflections = st.tabs([
         "📊 Master Progress Register",
@@ -1126,18 +1288,19 @@ elif selected_lecture == "🛡️ Admin Dashboard & User Management":
 
             excel_path = "/tmp/SAKEC_EV_Master_Progress_Register.xlsx"
             export_master_excel(excel_path)
-            with open(excel_path, "rb") as f:
-                st.download_button(
-                    label="⬇ Download Master Progress Register & Reflections (.xlsx)",
-                    data=f,
-                    file_name="SAKEC_EV_Master_Progress_Register.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary"
-                )
+            if os.path.exists(excel_path):
+                with open(excel_path, "rb") as f:
+                    st.download_button(
+                        label="⬇ Download Master Progress Register & Reflections (.xlsx)",
+                        data=f,
+                        file_name="SAKEC_EV_Master_Progress_Register.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
 
     with tab_users:
-        st.subheader("Enroll Students & Faculty (Admin Only)")
-        st.caption("Only administrators can add students, assign default passwords, and reset credentials.")
+        st.subheader("Enroll Students & Faculty")
+        st.caption("College staff and administrators can enroll students and manage credentials.")
 
         u_tab1, u_tab2, u_tab3 = st.tabs(["➕ Add Single User", "📤 Bulk CSV Upload", "🔑 Change / Reset Passwords"])
         
@@ -1145,7 +1308,7 @@ elif selected_lecture == "🛡️ Admin Dashboard & User Management":
             u_c1, u_c2 = st.columns(2)
             with u_c1:
                 new_name = st.text_input("Full Name *", key="new_u_name")
-                new_roll = st.text_input("Roll Number (for students) *", key="new_u_roll")
+                new_roll = st.text_input("Roll Number / Employee ID *", key="new_u_roll")
                 new_role = st.selectbox("Role *", ["student", "faculty"], key="new_u_role")
             with u_c2:
                 new_email = st.text_input("College Email ID (@sakec.ac.in) *", key="new_u_email")
@@ -1154,7 +1317,7 @@ elif selected_lecture == "🛡️ Admin Dashboard & User Management":
             
             custom_p = st.text_input("Initial Password (leave blank for default firstname@123)", type="password", key="new_u_pass")
 
-            if st.button("Enroll User", type="primary"):
+            if st.button("Enroll User", type="primary", key="btn_enroll_single"):
                 if new_name.strip() and new_email.strip():
                     u_rec, gen_p = add_user(new_name, new_roll, new_email, new_role, new_dept, new_div, custom_p or None)
                     st.success(f"User {new_name} ({new_email}) enrolled successfully! Initial password: {gen_p}")
@@ -1166,9 +1329,10 @@ elif selected_lecture == "🛡️ Admin Dashboard & User Management":
             csv_text = st.text_area(
                 "Paste CSV Roster (Format: Roll No, Full Name, Email ID, Department, Division)",
                 placeholder="23AIDS101,Aarav Patil,aarav.patil@sakec.ac.in,Artificial Intelligence & Data Science,Div A\n23AIDS102,Diya Shah,diya.shah@sakec.ac.in,Artificial Intelligence & Data Science,Div A",
-                height=150
+                height=150,
+                key="csv_roster_input"
             )
-            if st.button("Process & Enroll Roster", type="primary"):
+            if st.button("Process & Enroll Roster", type="primary", key="btn_process_csv"):
                 if csv_text.strip():
                     created_count, details = bulk_upload_users_csv(csv_text, default_role="student")
                     st.success(f"Successfully processed {created_count} student accounts with default password firstname@123.")
@@ -1180,21 +1344,21 @@ elif selected_lecture == "🛡️ Admin Dashboard & User Management":
             st.markdown("#### Change / Reset Password for Any User")
             all_users = load_users()
             user_emails = sorted(list(all_users.keys()))
-            sel_email = st.selectbox("Select User Account:", user_emails)
+            sel_email = st.selectbox("Select User Account:", user_emails, key="sel_user_pwd")
             
             curr_u = all_users[sel_email]
-            st.write(f"**Name:** {curr_u.get('name')} | **Roll:** {curr_u.get('roll')} | **Role:** {curr_u.get('role').upper()}")
+            st.write(f"**Name:** {curr_u.get('name')} | **Roll/ID:** {curr_u.get('roll')} | **Role:** {curr_u.get('role').upper()} | **Dept:** {curr_u.get('dept')}")
             
             new_pass_input = st.text_input("New Password (leave blank to reset to default firstname@123)", type="password", key="pwd_reset_inp")
-            if st.button("Update / Reset Password"):
+            if st.button("Update / Reset Password", key="btn_do_reset_pwd"):
                 new_p, err = reset_user_password(sel_email, new_pass_input or None)
                 if not err:
                     st.success(f"Password for {sel_email} updated successfully! New password: {new_p}")
                 else:
                     st.error(err)
 
-            if sel_email != "admin@sakec.ac.in":
-                if st.button("🗑 Delete User Account", type="secondary"):
+            if is_admin and sel_email != "admin@sakec.ac.in":
+                if st.button("🗑 Delete User Account", type="secondary", key="btn_del_user"):
                     delete_user(sel_email)
                     st.warning(f"User {sel_email} deleted.")
                     st.rerun()
@@ -1207,7 +1371,7 @@ elif selected_lecture == "🛡️ Admin Dashboard & User Management":
         if not student_emails:
             st.info("No student reflections submitted yet.")
         else:
-            sel_st_email = st.selectbox("Select Student to Audit:", student_emails)
+            sel_st_email = st.selectbox("Select Student to Audit:", student_emails, key="sel_audit_student")
             st_prof = get_student_profile(sel_st_email) or {}
             
             st.write(f"### Student: {st_prof.get('name')} ({st_prof.get('roll')}) — {st_prof.get('dept')}")
