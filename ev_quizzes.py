@@ -1,6 +1,7 @@
 """
 SAKEC Electric Vehicle Engineering Simulation Platform
-Pedagogical Reflection Prompts and Concept Verification Quizzes
+Pedagogical Reflection Prompts and 5 Parameter-Grounded Concept Questions per Module
+Pass Requirement: Minimum 3 of 5 correct (>= 60%) to earn Completion Credit
 Developed by Dr. Rohan Borgalli for Shah & Anchor Kutchhi Engineering College
 """
 
@@ -47,6 +48,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "Drag force is directly proportional to frontal area (F_ad ∝ A). A 20% increase in A produces an exact 20% increase in drag force."
+            },
+            {
+                "q": "When climbing a 10% road grade (approx. 5.7° incline), what is the primary component determining motor tractive force?",
+                "options": [
+                    "Hill-climbing resistance force F_hc = m * g * sin(θ)",
+                    "Cabin air conditioning electrical power",
+                    "Inverter capacitor leakage current",
+                    "Tire aerodynamic wake turbulence"
+                ],
+                "correct": 0,
+                "explain": "Hill-climbing resistance F_hc = m * g * sin(θ) directly opposes gravity. On steep gradients, it accounts for over 70% of peak motor tractive force demand."
+            },
+            {
+                "q": "Why does adding a 500 kg battery pack to an EV create a greater energy consumption penalty in city driving than on steady highway cruising?",
+                "options": [
+                    "City driving involves repeated kinetic accelerations (F = m * a) and continuous rolling resistance (F = Crr * m * g)",
+                    "Aerodynamic drag is directly proportional to vehicle weight",
+                    "Motors shut down at higher weights",
+                    "Battery voltage drops to zero when mass increases"
+                ],
+                "correct": 0,
+                "explain": "In city driving with repeated stop-and-go cycles, inertial acceleration energy (0.5 * m * v²) and rolling friction depend directly on vehicle mass. Highway cruising is primarily aerodynamically limited."
             }
         ]
     },
@@ -91,6 +114,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "PMSM motors eliminate rotor copper losses via permanent magnets, yielding peak efficiencies exceeding 95% and high torque-to-weight ratios."
+            },
+            {
+                "q": "If a traction motor produces 250 Nm of torque and the vehicle single-speed transmission has a gear ratio of 9:1 with 95% efficiency, what is the torque at the drive wheels?",
+                "options": [
+                    "2,137.5 Nm",
+                    "250.0 Nm",
+                    "27.7 Nm",
+                    "22,500 Nm"
+                ],
+                "correct": 0,
+                "explain": "Wheel Torque = Motor Torque * Gear Ratio * Efficiency = 250 * 9 * 0.95 = 2,137.5 Nm. Gear reduction multiplies motor torque into high launch force."
+            },
+            {
+                "q": "In which quadrant of the motor drive operational envelope does regenerative braking occur?",
+                "options": [
+                    "Quadrant II (Forward speed with negative/braking torque)",
+                    "Quadrant I (Forward motoring with positive torque)",
+                    "Quadrant III (Reverse motoring with negative speed and torque)",
+                    "Quadrant IV (Reverse braking only)"
+                ],
+                "correct": 0,
+                "explain": "Regenerative braking while driving forward represents Quadrant II operation: vehicle rotation is positive (forward) while motor produces negative electromagnetic torque (generator mode)."
             }
         ]
     },
@@ -135,6 +180,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "Batteries have finite gravimetric energy density (~150-250 Wh/kg). Oversizing increases curb weight significantly, requiring more structural mass, suspension, and energy just to move the battery itself."
+            },
+            {
+                "q": "Why do automotive battery management systems (BMS) enforce Depth of Discharge (DoD) buffers (e.g. limiting usable capacity to 10% - 90% SOC)?",
+                "options": [
+                    "To prevent accelerated chemical degradation, electrode micro-cracking, and copper dissolution at extreme low SOC",
+                    "To reduce vehicle speed on highways",
+                    "To allow Bluetooth communication to the dashboard",
+                    "To prevent the radio from discharging the 12V auxiliary battery"
+                ],
+                "correct": 0,
+                "explain": "Operating cells at extreme 0% or 100% states of charge induces high mechanical strain on electrode crystal lattices. Enforcing a 10-90% usable window significantly extends cycle life."
+            },
+            {
+                "q": "In a 1st-order Thevenin Equivalent Circuit Model (ECM) of a lithium cell, what does the parallel R1-C1 branch represent?",
+                "options": [
+                    "Electrochemical charge-transfer resistance and double-layer diffusion polarization dynamics",
+                    "Direct ohmic resistance of the metallic busbars",
+                    "Coolant fluid pump flow rate",
+                    "Mechanical chassis vibration absorption"
+                ],
+                "correct": 0,
+                "explain": "The R1-C1 branch models transient electrochemical polarization—the delayed voltage recovery observed after a high-current load pulse ceases."
             }
         ]
     },
@@ -179,6 +246,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "Cooperative brake blending maximizes electric regen first, then seamlessly engages hydraulic friction calipers when deceleration demand exceeds motor torque limits."
+            },
+            {
+                "q": "A 1,600 kg EV decelerates from 72 km/h (20 m/s) to a complete stop. What is the total kinetic energy that can theoretically be harvested before accounting for motor/battery losses?",
+                "options": [
+                    "320 kJ (approx. 0.089 kWh)",
+                    "32 kJ",
+                    "3,200 kJ",
+                    "16 kJ"
+                ],
+                "correct": 0,
+                "explain": "E_kinetic = 0.5 * m * v² = 0.5 * 1600 * (20)² = 0.5 * 1600 * 400 = 320,000 Joules = 320 kJ."
+            },
+            {
+                "q": "During emergency panic braking on a wet road, why must the ABS system rapidly override regenerative braking?",
+                "options": [
+                    "Motor torque response can induce tire slip/lock-up on slippery surfaces faster than tire-road adhesion allows",
+                    "Battery cells explode if charged during rain",
+                    "Inverters are waterproof and cannot operate under moisture",
+                    "Hydraulic brakes are completely disabled during emergency stops"
+                ],
+                "correct": 0,
+                "explain": "Active vehicle dynamics safety (ABS/ESC) requires rapid, independent per-wheel brake pressure modulation (tens of milliseconds) to prevent wheel lockup, requiring immediate throttling of drive-axle regen torque."
             }
         ]
     },
@@ -223,6 +312,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "C-rate = Power (or Current) / Capacity = 80 kW / 40 kWh = 2.0 C. A 1C charge theoretical duration is 1 hour; 2C is 30 minutes."
+            },
+            {
+                "q": "What is the primary factor limiting ultra-fast charging (>150 kW) in tropical Indian ambient temperatures (>40°C)?",
+                "options": [
+                    "Internal Joule heating (I² * R) requiring aggressive active liquid coolant chilling to keep cell temperatures below 45°C",
+                    "Lack of 3-phase alternating current",
+                    "Inability of copper cables to carry DC power",
+                    "Vehicle tire rubber melting from static electricity"
+                ],
+                "correct": 0,
+                "explain": "At 150 kW, currents exceed 350-400 Amps. High I²R resistive heating creates severe thermal dissipation bottlenecks, necessitating active liquid chiller loops."
+            },
+            {
+                "q": "What connector standard is mandated for DC Fast Charging passenger vehicles under Indian national standards (AIS-138 Part 2)?",
+                "options": [
+                    "Combined Charging System 2 (CCS-2)",
+                    "Tesla NACS proprietary",
+                    "CHAdeMO Type 1 only",
+                    "Standard 3-pin 5A domestic plug"
+                ],
+                "correct": 0,
+                "explain": "CCS-2 (Combined Charging System Type 2) is the standard adopted across Indian passenger EVs and commercial fast-charging networks."
             }
         ]
     },
@@ -267,6 +378,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "Centralized utility thermal plants achieve higher thermodynamic efficiency (~38-42%) than small, throttle-choked urban ICE engines, and EVs waste zero energy at standstill while recovering energy during deceleration."
+            },
+            {
+                "q": "If an EV consumes 130 Wh/km from a grid producing 700 g CO2/kWh, what is its direct operational Tank-to-Wheel + Well-to-Tank carbon emission rate?",
+                "options": [
+                    "91 g CO2 / km",
+                    "130 g CO2 / km",
+                    "700 g CO2 / km",
+                    "9.1 g CO2 / km"
+                ],
+                "correct": 0,
+                "explain": "Emissions = 0.130 kWh/km * 700 g CO2/kWh = 91 g CO2/km (compared to a typical BS-VI petrol car emitting 130-150 g CO2/km)."
+            },
+            {
+                "q": "What happens to the lifecycle environmental parity break-even distance when an EV is charged primarily via rooftop solar PV?",
+                "options": [
+                    "Break-even distance drops to under 10,000 km, maximizing decarbonization",
+                    "Break-even distance increases to 200,000 km",
+                    "Battery pack degrades twice as fast",
+                    "Solar charging emits more carbon than diesel generators"
+                ],
+                "correct": 0,
+                "explain": "Rooftop solar has near-zero operational emissions (~20-40 g CO2/kWh lifecycle), rapidly offsetting the manufacturing carbon debt in a fraction of normal vehicle lifespan."
             }
         ]
     },
@@ -311,6 +444,28 @@ EV_MODULES_DATA = {
                 ],
                 "correct": 0,
                 "explain": "The traction battery pack accounts for ~30-40% of vehicle capital cost. Factoring potential battery degradation and replacement cycles is critical for long-term TCO modelling."
+            },
+            {
+                "q": "If an EV costs ₹3,00,000 more upfront than an equivalent petrol car, but saves ₹6.00 per kilometer in running costs, what is the simple payback driving distance?",
+                "options": [
+                    "50,000 km",
+                    "300,000 km",
+                    "15,000 km",
+                    "180,000 km"
+                ],
+                "correct": 0,
+                "explain": "Payback Distance = Price Difference / Savings per km = 300,000 / 6.00 = 50,000 km. For a user driving 15,000 km/year, payback is achieved in ~3.3 years."
+            },
+            {
+                "q": "Why do electric commercial buses (e.g. Olectra Greentech in BEST Mumbai fleets) have lower scheduled mechanical maintenance costs than diesel buses?",
+                "options": [
+                    "Elimination of engine oil changes, transmission fluids, fuel injectors, spark plugs, particulate filters, and reduced brake pad wear via regen",
+                    "Electric buses do not use suspension springs or tires",
+                    "Municipal drivers do not require salaries",
+                    "Electric bus bodies do not require paint"
+                ],
+                "correct": 0,
+                "explain": "An electric drivetrain possesses ~90% fewer moving parts than a complex diesel powertrain, eliminating exhaust systems, oil filters, timing belts, and radiators."
             }
         ]
     }

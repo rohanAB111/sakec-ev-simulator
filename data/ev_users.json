@@ -1,0 +1,25 @@
+{
+  "admin@sakec.ac.in": {
+    "name": "Dr. Rohan Borgalli",
+    "roll": "ADMIN-01",
+    "email": "admin@sakec.ac.in",
+    "role": "admin",
+    "dept": "Computer Engineering",
+    "division": "Admin",
+    "hash": "cf53498c84b867b93ff5c7b563770c69239a4e180bcbe19175d4294bb2c3f6f7",
+    "salt": "a3a91ad10b7dda7aecb2f2fcb7fd26d1",
+    "created_at": 1792405634.7299223
+  },
+  "aarav.patil@sakec.ac.in": {
+    "name": "Aarav Patil",
+    "roll": "23AIDS101",
+    "email": "aarav.patil@sakec.ac.in",
+    "role": "student",
+    "dept": "Artificial Intelligence & Data Science",
+    "division": "Div A",
+    "hash": "40ed38531a4bfde04ff75ccd7eac508cb9da99af461dfa582996cd6599aabd78",
+    "salt": "9cab2506ce21bbdb5de6e901f0667f0f",
+    "default_password": "patil@2026",
+    "created_at": 1792405717.1852994
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "students": {
+    "aarav.patil@sakec.ac.in": {
+      "name": "Aarav Patil",
+      "roll": "23AIDS101",
+      "email": "aarav.patil@sakec.ac.in",
+      "dept": "AIDS",
+      "division": "Div A",
+      "registered_at": 1792405717.2390697,
+      "last_active": 1792405717.3842506,
+      "completed_modules": {
+        "module_1": {
+          "completed": true,
+          "status": "COMPLETED",
+          "last_attempt_at": 1792405717.3842285,
+          "reflection": "Better reflection explaining v^3 aerodynamic drag",
+          "quiz_score": 4,
+          "quiz_total": 5,
+          "quiz_percentage": 80.0,
+          "best_score": 4,
+          "attempts": 2,
+          "parameters": {}
+        }
+      }
+    }
+  },
+  "metadata": {
+    "college": "Shah & Anchor Kutchhi Engineering College, Chembur, Mumbai",
+    "faculty": "Dr. Rohan Borgalli"
+  }
+}

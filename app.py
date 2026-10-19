@@ -7,7 +7,12 @@ import time
 
 from ev_quizzes import EV_MODULES_DATA
 from ev_backend import (
-    register_or_get_student,
+    authenticate_user,
+    add_user,
+    reset_user_password,
+    delete_user,
+    bulk_upload_users_csv,
+    load_users,
     complete_simulation,
     get_student_profile,
     get_all_students_progress,
@@ -97,6 +102,34 @@ st.markdown("""
         margin-top: 2rem;
         margin-bottom: 2rem;
     }
+    .quiz-card {
+        background: #FFFFFF;
+        border: 1px solid #CBD5E1;
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 14px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .pass-badge {
+        background: #DCFCE7;
+        color: #15803D;
+        border: 1px solid #86EFAC;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        display: inline-block;
+    }
+    .fail-badge {
+        background: #FEF3C7;
+        color: #B45309;
+        border: 1px solid #FCD34D;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        display: inline-block;
+    }
     .footer {
         text-align: center;
         color: #64748B;
@@ -141,70 +174,59 @@ if "logged_in" not in st.session_state:
     st.session_state.user = None
 
 def render_login_screen():
-    st.markdown('<div class="main-title">🔐 EV Platform Login & Authentication</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Sign in to access interactive EV simulations, submit technical reflections, and maintain your accredited learning profile.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">🔐 EV Simulator Portal Sign In</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Sign in to access interactive EV simulations, submit technical reflections, and record accredited learning outcomes.</div>', unsafe_allow_html=True)
 
-    tab_student, tab_faculty = st.tabs(["👨‍🎓 Student Portal", "🛡️ Faculty / Administrator Portal"])
+    c1, c2 = st.columns([1.2, 1])
+    with c1:
+        st.markdown("#### Enter College Credentials")
+        login_id = st.text_input("College Email ID or Roll Number *", placeholder="e.g. rahul.sharma@sakec.ac.in or 23AIDS102").strip()
+        login_pass = st.text_input("Password *", type="password", placeholder="Enter your password").strip()
 
-    with tab_student:
-        st.subheader("Student Access Portal")
-        st.caption("Enter your college credentials to record simulation completion and track learning progress.")
+        st.caption("ℹ️ **Access Policy:** Only students and faculty enrolled by the administrator can access the platform. Default initial password is `firstname@123` (e.g. `rahul@123`). Contact the administrator if you need an account.")
 
-        c1, c2 = st.columns(2)
-        with c1:
-            name = st.text_input("Student Full Name *", placeholder="e.g. Rahul Sharma")
-            roll = st.text_input("Roll Number / Student ID *", placeholder="e.g. 23AIDS102")
-        with c2:
-            email = st.text_input("College Email ID (@sakec.ac.in) *", placeholder="rahul.sharma@sakec.ac.in")
-            dept = st.selectbox("Academic Department *", SAKEC_DEPARTMENTS)
-        
-        division = st.text_input("Class Division / Batch", placeholder="e.g. Div A / Batch A1")
-
-        if st.button("🚀 Enter EV Simulation Lab", type="primary", use_container_width=True):
-            if name.strip() and roll.strip() and email.strip():
-                user_record = register_or_get_student(name, roll, email, dept, division)
-                st.session_state.logged_in = True
-                st.session_state.user = {
-                    "name": name.strip(),
-                    "roll": roll.strip().upper(),
-                    "email": email.strip().lower(),
-                    "dept": dept,
-                    "division": division.strip(),
-                    "role": "student"
-                }
-                st.success("Authentication successful! Loading simulation modules...")
-                st.rerun()
+        if st.button("🚀 Sign In to EV Simulator", type="primary", use_container_width=True):
+            if not login_id or not login_pass:
+                st.error("Please enter both Email/Roll Number and Password.")
             else:
-                st.error("Please fill in all required fields (Name, Roll Number, and Email).")
+                # Lookup by email or roll number
+                users = load_users()
+                target_email = login_id.lower()
+                
+                # Check if user entered roll number instead of email
+                for em, u in users.items():
+                    if u.get("roll", "").upper() == login_id.upper():
+                        target_email = em
+                        break
+                
+                auth_res = authenticate_user(target_email, login_pass)
+                if auth_res["ok"]:
+                    st.session_state.logged_in = True
+                    st.session_state.user = auth_res["user"]
+                    st.success(f"Welcome, {auth_res['user']['name']}! Loading simulation modules...")
+                    st.rerun()
+                else:
+                    st.error(auth_res["error"])
 
         st.markdown("---")
         st.markdown("**Institutional Single Sign-On (SSO):**")
-        st.caption("College Microsoft 365 accounts allow 1-click login and automated OneDrive report backup.")
+        st.caption("College Microsoft 365 accounts allow direct authentication and automated OneDrive report sync.")
         if st.button("🔑 Sign in with Microsoft 365 (@sakec.ac.in)", use_container_width=True):
             if onedrive_sync.is_configured():
                 st.info("Redirecting to Microsoft Entra ID college login...")
             else:
-                st.info("Microsoft 365 Integration Note: SAKEC faculty and students can authenticate with Entra ID and sync reports directly to their OneDrive once the SAKEC IT admin configures MICROSOFT_CLIENT_ID on the server. In the meantime, use your college email above.")
+                st.info("Microsoft 365 Note: Once SAKEC IT admin configures MICROSOFT_CLIENT_ID on Render, 1-click SSO will activate. In the meantime, sign in with your college credentials above.")
 
-    with tab_faculty:
-        st.subheader("Faculty & Administrator Control")
-        st.caption("Access student reflection dossiers, review module completion matrices, and export NBA/NAAC assessment reports.")
-        f_email = st.text_input("Faculty Email", "admin@sakec.ac.in")
-        f_pass = st.text_input("Administrator Password", type="password", placeholder="Default: admin@123")
-        
-        if st.button("🛡️ Sign In to Faculty Dashboard", type="primary", use_container_width=True):
-            if f_pass == "admin@123" or f_pass == "sakec@123":
-                st.session_state.logged_in = True
-                st.session_state.user = {
-                    "name": "Dr. Rohan Borgalli",
-                    "email": f_email.lower(),
-                    "dept": "Computer Engineering",
-                    "role": "admin"
-                }
-                st.success("Faculty administrator authenticated.")
-                st.rerun()
-            else:
-                st.error("Invalid password. Default is admin@123.")
+    with c2:
+        st.info("""
+        **🎓 Student Simulation Workflow:**
+        1. **Sign In:** Use your college credentials enrolled by the administrator.
+        2. **Run Simulations:** Test vehicle parameters (speed, mass, drag, motor, battery).
+        3. **Reflect:** Submit your technical reflection explaining physical trade-offs.
+        4. **Complete Simulation:** Click *'Simulation Completed'* to trigger the 5-Question Understanding Check.
+        5. **Pass Requirement:** Must score **at least 3 out of 5 (>= 60%)** to earn completion credit. If you score < 3, you must re-run the simulation and retry.
+        6. **Track Progress:** Observe your verified completion records in *'My Profile'*.
+        """)
 
 if not st.session_state.logged_in:
     render_login_screen()
@@ -212,16 +234,17 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# SIDEBAR NAVIGATION & USER PROFILE CHIP
+# SIDEBAR NAVIGATION & ROLE RESTRICTIONS
 # ==========================================
 user = st.session_state.user
+is_admin = (user.get("role") == "admin")
 
-user_badge = "👨‍🎓 " + user["name"] if user.get("role") == "student" else "🛡️ " + user["name"]
-dept_badge = user.get("roll", user["role"].capitalize()) + " · " + user.get("dept", "SAKEC")
+user_badge = ("👨‍🎓 " + user["name"]) if user.get("role") == "student" else ("🛡️ " + user["name"] + " (Admin)")
+dept_badge = user.get("roll", "Faculty") + " · " + user.get("dept", "SAKEC")
 
 st.sidebar.markdown(f"""
 <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:10px; padding:12px; margin-bottom:14px;">
-    <div style="font-size:0.75rem; text-transform:uppercase; color:#64748B; font-weight:700;">Active User Profile</div>
+    <div style="font-size:0.75rem; text-transform:uppercase; color:#64748B; font-weight:700;">Signed In Profile</div>
     <div style="font-size:0.95rem; font-weight:700; color:#1E293B;">{user_badge}</div>
     <div style="font-size:0.8rem; color:#475569;">{dept_badge}</div>
 </div>
@@ -235,19 +258,33 @@ if st.sidebar.button("🚪 Sign Out", use_container_width=True):
 st.sidebar.markdown("---")
 st.sidebar.title("EV Module Navigator")
 
-lecture_options = [
-    "📌 Course Overview & EV Architecture",
-    "1️⃣ Lecture 1: Vehicle Dynamics & Tractive Force",
-    "2️⃣ Lecture 2: Electric Traction Motors & Drives",
-    "3️⃣ Lecture 3: Battery Chemistries & Range Sizing",
-    "4️⃣ Lecture 4: Regenerative Braking & Energy Flow",
-    "5️⃣ Lecture 5: EV Charging Infrastructure & CC-CV",
-    "6️⃣ Lecture 6: Well-to-Wheel (WTW) Decarbonization",
-    "7️⃣ Lecture 7: Total Cost of Ownership (TCO)",
-    "📝 Lecture 8: Classroom Interactive Concept Check",
-    "👤 My Profile & Learning Portfolio",
-    "🛡️ Faculty & Admin Progress Dashboard"
-]
+# Strictly filter navigation options by role
+if user.get("role") == "student":
+    # Students ONLY see simulations and their own profile
+    lecture_options = [
+        "1️⃣ Module 1: Vehicle Dynamics & Tractive Force",
+        "2️⃣ Module 2: Electric Traction Motors & Drives",
+        "3️⃣ Module 3: Battery Chemistries & Range Sizing",
+        "4️⃣ Module 4: Regenerative Braking & Energy Flow",
+        "5️⃣ Module 5: EV Charging Infrastructure & CC-CV",
+        "6️⃣ Module 6: Well-to-Wheel (WTW) Decarbonization",
+        "7️⃣ Module 7: Total Cost of Ownership (TCO)",
+        "👤 My Learning Progress & Portfolio"
+    ]
+else:
+    # Admin / Faculty sees all simulations, profile, and Admin Dashboard
+    lecture_options = [
+        "📌 Course Overview & EV Architecture",
+        "1️⃣ Module 1: Vehicle Dynamics & Tractive Force",
+        "2️⃣ Module 2: Electric Traction Motors & Drives",
+        "3️⃣ Module 3: Battery Chemistries & Range Sizing",
+        "4️⃣ Module 4: Regenerative Braking & Energy Flow",
+        "5️⃣ Module 5: EV Charging Infrastructure & CC-CV",
+        "6️⃣ Module 6: Well-to-Wheel (WTW) Decarbonization",
+        "7️⃣ Module 7: Total Cost of Ownership (TCO)",
+        "👤 My Learning Progress & Portfolio",
+        "🛡️ Admin Dashboard & User Management"
+    ]
 
 selected_lecture = st.sidebar.selectbox("Select Learning Module:", lecture_options)
 
@@ -295,75 +332,105 @@ else:
     default_motor_t = 200.0
     default_voltage = 300.0
 
+
 # ==========================================
-# POST-SIMULATION REFLECTION & QUIZ COMPONENT
+# POST-SIMULATION REFLECTION & 5-QUESTION CHECK
+# (Pass Threshold: >= 3/5 Correct Required)
 # ==========================================
 def render_post_simulation_block(module_key, module_title, tested_params):
     st.markdown('<div class="reflection-box">', unsafe_allow_html=True)
-    st.markdown(f'<h3 style="color:#1E3A8A; margin-top:0;">📝 Student Reflection &amp; Concept Check: {module_title}</h3>', unsafe_allow_html=True)
-    st.caption("To complete this simulation and archive progress in your official SAKEC student profile, complete the reflection and concept check below.")
+    st.markdown(f'<h3 style="color:#1E3A8A; margin-top:0;">📝 Simulation Completion &amp; Assessment: {module_title}</h3>', unsafe_allow_html=True)
 
     mod_data = EV_MODULES_DATA.get(module_key, {})
     prof = get_student_profile(user["email"]) or {}
     comp_data = prof.get("completed_modules", {}).get(module_key, {})
     is_already_completed = comp_data.get("completed", False)
+    attempts = comp_data.get("attempts", 0)
+    best_score = comp_data.get("best_score", comp_data.get("quiz_score", 0))
 
     if is_already_completed:
-        comp_time = comp_data.get('completed_at', time.time())
-        t_str = time.strftime('%d %b %Y, %I:%M %p', time.localtime(comp_time))
-        st.success(f"✓ You previously completed this simulation on {t_str} with score: {comp_data.get('quiz_percentage', 100)}%. You may re-submit to update your record.")
+        st.markdown(f'<span class="pass-badge">✓ COMPLETED (Score: {best_score}/5 | {attempts} {"attempt" if attempts==1 else "attempts"})</span>', unsafe_allow_html=True)
+        st.caption(f"Completed on {time.strftime('%d %b %Y, %I:%M %p', time.localtime(comp_data.get('last_attempt_at', time.time())))}. You can re-attempt below to improve your score.")
+    elif attempts > 0:
+        st.markdown(f'<span class="fail-badge">⚠️ NOT COMPLETED: RETRY REQUIRED (Last Score: {comp_data.get("quiz_score", 0)}/5 | {attempts} {"attempt" if attempts==1 else "attempts"})</span>', unsafe_allow_html=True)
+        st.warning("You did not reach the minimum threshold of 3/5 correct answers on your previous attempt. Please re-run the simulation, observe parameter changes, and retry.")
+    else:
+        st.caption("Rule: You must test the simulation, enter your engineering reflection, and answer **at least 3 of 5 questions correctly (>= 60%)** to earn completion credit.")
 
-    st.markdown("#### 1. Technical Reflection & Observations")
-    prompt_str = mod_data.get('reflection_prompt', 'Describe your engineering observations when varying vehicle parameters.')
-    st.info(f"**Reflection Prompt:** {prompt_str}")
-    
+    # 1. Technical Reflection
+    st.markdown("#### 1. Engineering Reflection & Parameter Observation")
+    st.info(f"**Guided Reflection Prompt:** {mod_data.get('reflection_prompt', 'Describe your engineering observations when varying vehicle parameters.')}")
+
     prev_ref = comp_data.get("reflection", "")
     reflection_text = st.text_area(
-        "Enter your engineering reflection (explain observed trade-offs, trends, and physical reasoning):",
+        "Enter your engineering reflection (explain observed trade-offs, curves, and physical reasoning):",
         value=prev_ref,
-        height=140,
-        placeholder="Based on the simulation plots, when vehicle speed increased from 40 to 100 km/h, the power demand increased cubically due to aerodynamic drag...",
-        key=f"ref_area_{module_key}"
+        height=130,
+        placeholder="Explain how changing speed, weight, frontal area, or battery capacity affected tractive power demand and efficiency based on your simulation runs...",
+        key=f"ref_text_{module_key}"
     )
 
-    st.markdown("#### 2. Understanding Verification Check")
-    questions = mod_data.get("questions", [])
-    total_q = len(questions)
-    user_choices = {}
+    # Trigger to show 5 questions
+    quiz_session_key = f"quiz_active_{module_key}"
+    if quiz_session_key not in st.session_state:
+        st.session_state[quiz_session_key] = False
 
-    for q_idx, q in enumerate(questions):
-        st.markdown(f"**Q{q_idx+1}: {q['q']}**")
-        ans = st.radio(
-            "Select option:",
-            q["options"],
-            key=f"quiz_{module_key}_{q_idx}",
-            label_visibility="collapsed"
-        )
-        user_choices[q_idx] = q["options"].index(ans)
-
-    if st.button(f"✅ Submit Reflection & Mark {mod_data.get('short_title', 'Simulation')} Completed", type="primary", key=f"btn_{module_key}"):
-        if not reflection_text or len(reflection_text.strip()) < 25:
-            st.error("Please provide a meaningful technical reflection (at least 25 characters) detailing your simulation observations.")
-            return
-
-        score = 0
-        st.markdown("##### Detailed Concept Explanations:")
-        for q_idx, q in enumerate(questions):
-            is_correct = (user_choices[q_idx] == q["correct"])
-            if is_correct:
-                score += 1
-                st.success(f"**Q{q_idx+1} Correct:** {q['options'][q['correct']]} — {q['explain']}")
+    if not is_already_completed and not st.session_state[quiz_session_key]:
+        if st.button("✅ Simulation Completed — Start 5-Question Understanding Check", type="primary", key=f"btn_complete_{module_key}"):
+            if not reflection_text or len(reflection_text.strip()) < 20:
+                st.error("Please provide a thorough technical reflection (at least 20 characters) before taking the assessment.")
             else:
-                st.error(f"**Q{q_idx+1} Incorrect:** You selected '{q['options'][user_choices[q_idx]]}'. Correct: **{q['options'][q['correct']]}**. — {q['explain']}")
+                st.session_state[quiz_session_key] = True
+                st.rerun()
 
-        pct_score = round((score / total_q) * 100, 1) if total_q > 0 else 100.0
-        complete_simulation(
-            user["email"], user["name"], user.get("roll", "FACULTY"),
-            user.get("dept", "SAKEC"), user.get("division", ""),
-            module_key, reflection_text, score, total_q, tested_params
-        )
-        st.balloons()
-        st.success(f"🎉 Module Completed! Score: {pct_score}%. Your record has been permanently archived in your SAKEC student profile.")
+    # 2. Render 5 Understanding Questions
+    if is_already_completed or st.session_state.get(quiz_session_key, False):
+        st.markdown("#### 2. Understanding Verification Check (5 Questions — Pass: 3/5)")
+        questions = mod_data.get("questions", [])
+        total_q = len(questions)
+        user_choices = {}
+
+        for q_idx, q in enumerate(questions):
+            st.markdown(f'<div class="quiz-card"><b>Question {q_idx+1} of {total_q}:</b> {q["q"]}</div>', unsafe_allow_html=True)
+            ans = st.radio(
+                "Select your answer:",
+                q["options"],
+                key=f"quiz_opt_{module_key}_{q_idx}",
+                label_visibility="collapsed"
+            )
+            user_choices[q_idx] = q["options"].index(ans)
+
+        if st.button(f"Submit 5 Questions for Grading", type="primary", key=f"btn_grade_{module_key}"):
+            if not reflection_text or len(reflection_text.strip()) < 20:
+                st.error("Please enter your engineering reflection above before submitting.")
+                return
+
+            score = 0
+            st.markdown("---")
+            st.markdown("##### Detailed Assessment Feedback:")
+            for q_idx, q in enumerate(questions):
+                is_correct = (user_choices[q_idx] == q["correct"])
+                if is_correct:
+                    score += 1
+                    st.success(f"**Q{q_idx+1} Correct:** {q['options'][q['correct']]} — {q['explain']}")
+                else:
+                    st.error(f"**Q{q_idx+1} Incorrect:** You chose '{q['options'][user_choices[q_idx]]}'. Correct Answer: **{q['options'][q['correct']]}**. — {q['explain']}")
+
+            # Check Pass / Fail Condition (>= 3 of 5)
+            passed = complete_simulation(
+                user["email"], user["name"], user.get("roll", "—"),
+                user.get("dept", "SAKEC"), user.get("division", ""),
+                module_key, reflection_text, score, total_q, tested_params
+            )
+
+            if passed:
+                st.balloons()
+                st.success(f"🎉 **CONGRATULATIONS! You scored {score}/5 (PASSED).** This simulation is now permanently marked as **COMPLETED** in your official SAKEC student learning profile.")
+            else:
+                st.error(f"⚠️ **MINIMUM SCORE NOT MET:** You scored **{score}/5**. A minimum of 3 correct answers (60%) is required to earn completion credit. You must review the simulation curves, check the physics explanations above, and retry.")
+                if st.button("🔄 Try Again", key=f"retry_{module_key}"):
+                    st.session_state[quiz_session_key] = True
+                    st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -937,7 +1004,7 @@ elif selected_lecture == "📝 Lecture 8: Classroom Interactive Concept Check":
 # ==========================================
 # STUDENT PROFILE & LEARNING PORTFOLIO VIEW
 # ==========================================
-elif selected_lecture == "👤 My Profile & Learning Portfolio":
+elif selected_lecture == "👤 My Learning Progress & Portfolio":
     st.markdown('<div class="main-title">👤 Student Learning Profile &amp; EV Portfolio</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-title">Official Laboratory Record · Shah &amp; Anchor Kutchhi Engineering College</div>', unsafe_allow_html=True)
 
@@ -950,93 +1017,193 @@ elif selected_lecture == "👤 My Profile & Learning Portfolio":
     }
 
     comp_dict = prof.get("completed_modules", {})
-    total_completed = len([m for m in comp_dict.values() if m.get("completed")])
-    scores = [m.get("quiz_percentage", 0) for m in comp_dict.values() if m.get("completed")]
-    avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+    completed_count = len([m for m in comp_dict.values() if m.get("completed") is True])
+    scores = [m.get("quiz_score", 0) for m in comp_dict.values() if m.get("completed") is True]
+    avg_score = round((sum(scores) / (len(scores)*5)) * 100, 1) if scores else 0.0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Student Name", prof.get("name", user["name"]))
     c2.metric("Roll Number", prof.get("roll", "—"))
-    c3.metric("Simulations Completed", f"{total_completed} / 7")
-    c4.metric("Average Quiz Score", f"{avg_score}%")
+    c3.metric("Simulations Completed", f"{completed_count} / 7")
+    c4.metric("Avg Pass Score", f"{avg_score}%")
 
-    st.progress(total_completed / 7.0, text=f"Lab Completion Progress: {int((total_completed/7)*100)}%")
+    st.progress(completed_count / 7.0, text=f"Overall Lab Completion Progress: {int((completed_count/7)*100)}%")
 
-    st.markdown("### Completed Simulation Dossier")
-    if total_completed == 0:
-        st.info("You have not completed any simulations yet. Navigate to any module from the left sidebar, run the physics simulation, and submit your technical reflection.")
-    else:
-        for m_key, m_info in EV_MODULES_DATA.items():
-            if m_key in comp_dict and comp_dict[m_key].get("completed"):
-                data = comp_dict[m_key]
-                t_str = time.strftime('%d %b %Y, %I:%M %p', time.localtime(data.get('completed_at', time.time())))
-                with st.expander(f"✓ {m_info['title']} — Score: {data.get('quiz_percentage', 100)}% (Completed {t_str})", expanded=True):
-                    st.markdown("**Submitted Technical Reflection:**")
-                    st.write(data.get("reflection", "No reflection text provided."))
-                    if data.get("parameters"):
-                        st.caption(f"Tested Parameters: {data['parameters']}")
+    st.markdown("### Module Status & Dossier")
+    for m_key, m_info in EV_MODULES_DATA.items():
+        data = comp_dict.get(m_key, {})
+        is_done = data.get("completed", False)
+        attempts = data.get("attempts", 0)
+        
+        status_badge = "✓ COMPLETED" if is_done else ("⚠️ RETRY REQUIRED" if attempts > 0 else "⏳ PENDING")
+        score_text = f"Score: {data.get('quiz_score', 0)}/5 ({data.get('quiz_percentage', 0)}%)" if attempts > 0 else "Not Attempted"
+        
+        with st.expander(f"{m_info['title']} — {status_badge} ({score_text})", expanded=is_done):
+            if is_done:
+                t_str = time.strftime('%d %b %Y, %I:%M %p', time.localtime(data.get('last_attempt_at', time.time())))
+                st.markdown(f"**Completion Status:** <span class='pass-badge'>PASSED (Attempts: {attempts})</span>", unsafe_allow_html=True)
+                st.caption(f"Last Attempt: {t_str}")
+                st.markdown(f"**Submitted Technical Reflection:**")
+                st.write(data.get("reflection", "No reflection text provided."))
+                if data.get("parameters"):
+                    st.caption(f"Tested Parameters: {data['parameters']}")
+            elif attempts > 0:
+                st.markdown(f"<span class='fail-badge'>RETRY REQUIRED (Score: {data.get('quiz_score', 0)}/5 | Attempts: {attempts})</span>", unsafe_allow_html=True)
+                st.warning("Minimum 3/5 required to pass. Please re-run the simulation and retry.")
+            else:
+                st.info("Simulation not yet completed. Select this module from the sidebar to begin.")
 
 
 # ==========================================
-# FACULTY & ADMIN PROGRESS DASHBOARD
+# ADMIN DASHBOARD & USER ROSTER MANAGEMENT
+# (Only Admin Can Access)
 # ==========================================
-elif selected_lecture == "🛡️ Faculty & Admin Progress Dashboard":
-    st.markdown('<div class="main-title">🛡️ Faculty &amp; Administrator Progress Dashboard</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-title">Continuous Internal Assessment (CCE / NBA Criterion 2.2.1) · Class-Wide Progress</div>', unsafe_allow_html=True)
+elif selected_lecture == "🛡️ Admin Dashboard & User Management":
+    if not is_admin:
+        st.error("Access Restricted: Only college administrators can access the User Management & Master Progress Portal.")
+        st.stop()
+
+    st.markdown('<div class="main-title">🛡️ Administrator Portal &amp; Student Progress</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Continuous Internal Assessment (NBA Criterion 2.2.1) · Student Roster &amp; Password Management</div>', unsafe_allow_html=True)
+
+    tab_overview, tab_users, tab_reflections = st.tabs([
+        "📊 Master Progress Register",
+        "👥 User & Password Management",
+        "📝 Student Reflections Dossier"
+    ])
 
     all_students = get_all_students_progress()
     total_st = len(all_students)
     total_sims_done = sum(s["completed_count"] for s in all_students)
     class_avg = round(sum(s["average_score"] for s in all_students) / total_st, 1) if total_st > 0 else 0.0
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Enrolled Students", total_st)
-    m2.metric("Total Completed Simulations", total_sims_done)
-    m3.metric("Overall Class Average Score", f"{class_avg}%")
+    with tab_overview:
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Enrolled Students", total_st)
+        m2.metric("Total Completed Modules", total_sims_done)
+        m3.metric("Class Average Score", f"{class_avg}%")
 
-    st.markdown("### Master Student Progress Register")
-    if total_st == 0:
-        st.info("No student records logged yet. As students sign in and complete simulations, their progress will populate here in real time.")
-    else:
-        table_rows = []
-        for s in all_students:
-            row = {
-                "Roll No": s["roll"],
-                "Student Name": s["name"],
-                "Department": s["dept"],
-                "Division": s["division"],
-                "Completed": f"{s['completed_count']} / 7",
-                "Progress (%)": f"{s['completion_pct']}%",
-                "Avg Score (%)": f"{s['average_score']}%",
-            }
-            for i in range(1, 8):
-                m_k = f"module_{i}"
-                row[f"S{i}"] = "✓" if s["modules"].get(m_k, {}).get("completed") else "—"
-            table_rows.append(row)
-        
-        df_students = pd.DataFrame(table_rows)
-        st.dataframe(df_students, use_container_width=True)
-
-        st.markdown("### Export Accreditation Records (NBA / NAAC)")
-        excel_path = "/tmp/SAKEC_EV_Simulation_Master_Register.xlsx"
-        export_master_excel(excel_path)
-        with open(excel_path, "rb") as f:
-            st.download_button(
-                label="⬇ Download Master Progress Register & Reflection Dossier (.xlsx)",
-                data=f,
-                file_name="SAKEC_EV_Simulation_Master_Register.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-
-        st.markdown("---")
-        st.markdown("### ☁️ Microsoft 365 & OneDrive Sync")
-        st.caption("College Microsoft subscription allows direct synchronization to SAKEC SharePoint / OneDrive for Business.")
-        if onedrive_sync.is_configured():
-            if st.button("☁️ Synchronize Master Register to Department OneDrive"):
-                st.info("Connecting to Microsoft Graph API and syncing to OneDrive/SAKEC_EV_Lab/...")
+        st.markdown("### Class Completion Matrix (Pass Rule: >= 3/5)")
+        if total_st == 0:
+            st.info("No students enrolled yet. Go to the 'User & Password Management' tab to add students or bulk-upload a CSV roster.")
         else:
-            st.info("To enable 1-click cloud sync to SAKEC OneDrive, configure MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET on Render as detailed in DEPLOYMENT.md.")
+            table_rows = []
+            for s in all_students:
+                row = {
+                    "Roll No": s["roll"],
+                    "Student Name": s["name"],
+                    "Department": s["dept"],
+                    "Division": s["division"],
+                    "Completed": f"{s['completed_count']} / 7",
+                    "Progress": f"{s['completion_pct']}%",
+                    "Avg Score": f"{s['average_score']}%",
+                }
+                for i in range(1, 8):
+                    m_k = f"module_{i}"
+                    m_d = s["modules"].get(m_k, {})
+                    if m_d.get("completed"):
+                        row[f"M{i}"] = f"✓ ({m_d.get('quiz_score',0)}/5)"
+                    elif m_d.get("attempts", 0) > 0:
+                        row[f"M{i}"] = f"✗ Retry ({m_d.get('quiz_score',0)}/5)"
+                    else:
+                        row[f"M{i}"] = "—"
+                table_rows.append(row)
+
+            df_matrix = pd.DataFrame(table_rows)
+            st.dataframe(df_matrix, use_container_width=True)
+
+            excel_path = "/tmp/SAKEC_EV_Master_Progress_Register.xlsx"
+            export_master_excel(excel_path)
+            with open(excel_path, "rb") as f:
+                st.download_button(
+                    label="⬇ Download Master Progress Register & Reflections (.xlsx)",
+                    data=f,
+                    file_name="SAKEC_EV_Master_Progress_Register.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary"
+                )
+
+    with tab_users:
+        st.subheader("Enroll Students & Faculty (Admin Only)")
+        st.caption("Only administrators can add students, assign default passwords, and reset credentials.")
+
+        u_tab1, u_tab2, u_tab3 = st.tabs(["➕ Add Single User", "📤 Bulk CSV Upload", "🔑 Change / Reset Passwords"])
+        
+        with u_tab1:
+            u_c1, u_c2 = st.columns(2)
+            with u_c1:
+                new_name = st.text_input("Full Name *", key="new_u_name")
+                new_roll = st.text_input("Roll Number (for students) *", key="new_u_roll")
+                new_role = st.selectbox("Role *", ["student", "faculty"], key="new_u_role")
+            with u_c2:
+                new_email = st.text_input("College Email ID (@sakec.ac.in) *", key="new_u_email")
+                new_dept = st.selectbox("Department *", SAKEC_DEPARTMENTS, key="new_u_dept")
+                new_div = st.text_input("Division / Batch", key="new_u_div")
+            
+            custom_p = st.text_input("Initial Password (leave blank for default firstname@123)", type="password", key="new_u_pass")
+
+            if st.button("Enroll User", type="primary"):
+                if new_name.strip() and new_email.strip():
+                    u_rec, gen_p = add_user(new_name, new_roll, new_email, new_role, new_dept, new_div, custom_p or None)
+                    st.success(f"User {new_name} ({new_email}) enrolled successfully! Initial password: {gen_p}")
+                else:
+                    st.error("Name and Email are required.")
+
+        with u_tab2:
+            st.markdown("#### Bulk Enroll Students via CSV")
+            csv_text = st.text_area(
+                "Paste CSV Roster (Format: Roll No, Full Name, Email ID, Department, Division)",
+                placeholder="23AIDS101,Aarav Patil,aarav.patil@sakec.ac.in,Artificial Intelligence & Data Science,Div A\n23AIDS102,Diya Shah,diya.shah@sakec.ac.in,Artificial Intelligence & Data Science,Div A",
+                height=150
+            )
+            if st.button("Process & Enroll Roster", type="primary"):
+                if csv_text.strip():
+                    created_count, details = bulk_upload_users_csv(csv_text, default_role="student")
+                    st.success(f"Successfully processed {created_count} student accounts with default password firstname@123.")
+                    st.dataframe(pd.DataFrame(details))
+                else:
+                    st.error("Please paste CSV data.")
+
+        with u_tab3:
+            st.markdown("#### Change / Reset Password for Any User")
+            all_users = load_users()
+            user_emails = sorted(list(all_users.keys()))
+            sel_email = st.selectbox("Select User Account:", user_emails)
+            
+            curr_u = all_users[sel_email]
+            st.write(f"**Name:** {curr_u.get('name')} | **Roll:** {curr_u.get('roll')} | **Role:** {curr_u.get('role').upper()}")
+            
+            new_pass_input = st.text_input("New Password (leave blank to reset to default firstname@123)", type="password", key="pwd_reset_inp")
+            if st.button("Update / Reset Password"):
+                new_p, err = reset_user_password(sel_email, new_pass_input or None)
+                if not err:
+                    st.success(f"Password for {sel_email} updated successfully! New password: {new_p}")
+                else:
+                    st.error(err)
+
+            if sel_email != "admin@sakec.ac.in":
+                if st.button("🗑 Delete User Account", type="secondary"):
+                    delete_user(sel_email)
+                    st.warning(f"User {sel_email} deleted.")
+                    st.rerun()
+
+    with tab_reflections:
+        st.subheader("Student Qualitative Reflections Dossier")
+        st.caption("Inspect individual student observations and physical reasoning across simulation modules.")
+        
+        student_emails = [s["email"] for s in all_students if s["completed_count"] > 0]
+        if not student_emails:
+            st.info("No student reflections submitted yet.")
+        else:
+            sel_st_email = st.selectbox("Select Student to Audit:", student_emails)
+            st_prof = get_student_profile(sel_st_email) or {}
+            
+            st.write(f"### Student: {st_prof.get('name')} ({st_prof.get('roll')}) — {st_prof.get('dept')}")
+            for m_k, m_d in st_prof.get("completed_modules", {}).items():
+                m_title = EV_MODULES_DATA.get(m_k, {}).get("title", m_k)
+                with st.expander(f"{m_title} — Status: {m_d.get('status')} (Score: {m_d.get('quiz_score')}/5)"):
+                    st.write(f"**Reflection:** {m_d.get('reflection', '—')}")
+                    st.caption(f"Tested Parameters: {m_d.get('parameters', {})}")
 
 
 # Footer
