@@ -3,10 +3,11 @@ SAKEC Electric Vehicle Engineering Simulation Platform
 Backend Data Persistence, User Management (Admin Only), Assessment Analytics, and Excel Report Engine
 Developed by Dr. Rohan Borgalli for Shah & Anchor Kutchhi Engineering College
 
-Permanent Storage Upgrade:
-- Uses Supabase (PostgreSQL REST API via `requests` — no extra pip packages required)
-  when SUPABASE_URL and SUPABASE_KEY are set in Streamlit Secrets or environment variables.
-- Automatically falls back to local JSON (`data/*.json`) when running locally without secrets.
+Permanent Storage Engine (v4.2 — Hardened Supabase Sync):
+- Stores all users (`ev_users`) and student progress (`ev_records`) permanently in Supabase via REST API.
+- Handles both top-level and nested `[supabase]` Streamlit Secrets.
+- Sanitizes NumPy/non-JSON types, normalizes email casing & role casing, and supports both `jsonb` and `text` columns.
+- Surfaces cloud sync errors visibly in Streamlit instead of failing silently.
 """
 
 import os
@@ -14,6 +15,7 @@ import json
 import time
 import hashlib
 import urllib.parse
+from datetime import datetime, timezone
 
 try:
     import requests
@@ -38,27 +40,69 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 RECORDS_FILE = os.path.join(DATA_DIR, "ev_student_records.json")
 USERS_FILE = os.path.join(DATA_DIR, "ev_users.json")
 
+LAST_DB_ERROR = ""
+
 # =========================================================================
-# SUPABASE PERMANENT CLOUD STORAGE HELPERS (ZERO EXTRA DEPENDENCIES)
+# SUPABASE PERMANENT CLOUD STORAGE HELPERS
 # =========================================================================
 
-def _get_secret(key, default=""):
-    val = os.getenv(key)
-    if val:
-        return val.strip()
+def _get_secret(key, alt_keys=()):
+    for k in (key,) + tuple(alt_keys):
+        val = os.getenv(k)
+        if val and str(val).strip():
+            return str(val).strip()
     if st is not None:
         try:
-            if key in st.secrets:
-                return str(st.secrets[key]).strip()
+            for k in (key,) + tuple(alt_keys):
+                if k in st.secrets:
+                    return str(st.secrets[k]).strip()
+            if "supabase" in st.secrets:
+                sec = st.secrets["supabase"]
+                for k in (key,) + tuple(alt_keys):
+                    if k in sec:
+                        return str(sec[k]).strip()
         except Exception:
             pass
-    return default
+    return ""
+
+def _get_supabase_url():
+    return _get_secret("SUPABASE_URL", ("supabase_url", "url", "URL")).rstrip("/")
+
+def _get_supabase_key():
+    return _get_secret("SUPABASE_KEY", ("supabase_key", "SUPABASE_SERVICE_ROLE_KEY", "key", "KEY"))
 
 def is_cloud_db_enabled():
-    return HAS_REQUESTS and bool(_get_secret("SUPABASE_URL")) and bool(_get_secret("SUPABASE_KEY"))
+    return HAS_REQUESTS and bool(_get_supabase_url()) and bool(_get_supabase_key())
+
+def _record_db_error(context, exc):
+    global LAST_DB_ERROR
+    msg = f"Supabase {context} failed: {exc}"
+    LAST_DB_ERROR = msg
+    print(msg)
+    if st is not None:
+        try:
+            st.warning(f"⚠️ Cloud database sync issue ({context}): {exc}")
+        except Exception:
+            pass
+
+def _sanitize_json(obj):
+    """Ensure all nested values (including NumPy scalars) are pure JSON types."""
+    return json.loads(json.dumps(obj, default=lambda x: float(x) if hasattr(x, "__float__") else str(x)))
+
+def _parse_row_data(raw_data):
+    if isinstance(raw_data, dict):
+        return raw_data
+    if isinstance(raw_data, str):
+        try:
+            parsed = json.loads(raw_data)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+    return None
 
 def _sb_headers(prefer=None):
-    key = _get_secret("SUPABASE_KEY")
+    key = _get_supabase_key()
     headers = {
         "apikey": key,
         "Authorization": f"Bearer {key}",
@@ -69,52 +113,90 @@ def _sb_headers(prefer=None):
     return headers
 
 def _sb_url(table):
-    base = _get_secret("SUPABASE_URL").rstrip("/")
-    return f"{base}/rest/v1/{table}"
+    return f"{_get_supabase_url()}/rest/v1/{table}"
 
 def _sb_fetch_all(table):
-    res = requests.get(
-        _sb_url(table),
-        headers=_sb_headers(),
-        params={"select": "email,data"},
-        timeout=10,
-    )
-    res.raise_for_status()
-    rows = res.json()
-    return {row["email"]: row["data"] for row in rows if "email" in row and "data" in row}
+    """Fetch all rows from a Supabase table (paginates past 1000-row PostgREST default)."""
+    all_items = {}
+    offset = 0
+    page_size = 1000
+    while True:
+        headers = _sb_headers()
+        headers["Range-Unit"] = "items"
+        headers["Range"] = f"{offset}-{offset + page_size - 1}"
+        res = requests.get(
+            _sb_url(table),
+            headers=headers,
+            params={"select": "email,data"},
+            timeout=12,
+        )
+        if not res.ok:
+            raise RuntimeError(f"HTTP {res.status_code}: {res.text[:200]}")
+        rows = res.json()
+        if not isinstance(rows, list):
+            break
+        for row in rows:
+            em = str(row.get("email", "")).strip().lower()
+            parsed = _parse_row_data(row.get("data"))
+            if em and parsed is not None:
+                all_items[em] = parsed
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_items
 
 def _sb_upsert_row(table, email_key, data_dict):
-    payload = {"email": email_key, "data": data_dict}
+    clean_email = email_key.strip().lower()
+    payload = {
+        "email": clean_email,
+        "data": _sanitize_json(data_dict),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
     res = requests.post(
         _sb_url(table),
         headers=_sb_headers(prefer="resolution=merge-duplicates,return=minimal"),
         params={"on_conflict": "email"},
         json=payload,
-        timeout=10,
+        timeout=12,
     )
-    res.raise_for_status()
+    if not res.ok:
+        raise RuntimeError(f"HTTP {res.status_code}: {res.text[:200]}")
 
 def _sb_upsert_many(table, mapping):
     if not mapping:
         return
-    payload = [{"email": k, "data": v} for k, v in mapping.items()]
-    res = requests.post(
-        _sb_url(table),
-        headers=_sb_headers(prefer="resolution=merge-duplicates,return=minimal"),
-        params={"on_conflict": "email"},
-        json=payload,
-        timeout=15,
-    )
-    res.raise_for_status()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    payload = [
+        {
+            "email": str(k).strip().lower(),
+            "data": _sanitize_json(v),
+            "updated_at": now_iso,
+        }
+        for k, v in mapping.items()
+        if str(k).strip()
+    ]
+    # Upsert in chunks of 200 to stay well within PostgREST payload limits
+    for i in range(0, len(payload), 200):
+        chunk = payload[i : i + 200]
+        res = requests.post(
+            _sb_url(table),
+            headers=_sb_headers(prefer="resolution=merge-duplicates,return=minimal"),
+            params={"on_conflict": "email"},
+            json=chunk,
+            timeout=20,
+        )
+        if not res.ok:
+            raise RuntimeError(f"HTTP {res.status_code}: {res.text[:200]}")
 
 def _sb_delete_row(table, email_key):
-    encoded = urllib.parse.quote(email_key, safe="")
+    encoded = urllib.parse.quote(email_key.strip().lower(), safe="")
     res = requests.delete(
         f"{_sb_url(table)}?email=eq.{encoded}",
         headers=_sb_headers(),
-        timeout=10,
+        timeout=12,
     )
-    res.raise_for_status()
+    if not res.ok:
+        raise RuntimeError(f"HTTP {res.status_code}: {res.text[:200]}")
 
 # =========================================================================
 # USER AUTHENTICATION & ADMIN ROSTER MANAGEMENT
@@ -146,18 +228,31 @@ def _default_admin_users():
         }
     }
 
+def _normalize_users_dict(raw_users):
+    normalized = {}
+    for k, u in (raw_users or {}).items():
+        if not isinstance(u, dict):
+            continue
+        em = str(u.get("email") or k).strip().lower()
+        if not em:
+            continue
+        u_copy = dict(u)
+        u_copy["email"] = em
+        u_copy["role"] = str(u_copy.get("role", "student")).strip().lower()
+        normalized[em] = u_copy
+    return normalized
+
 def load_users():
     if is_cloud_db_enabled():
         try:
-            cloud_users = _sb_fetch_all("ev_users")
+            cloud_users = _normalize_users_dict(_sb_fetch_all("ev_users"))
             if cloud_users:
                 return cloud_users
-            # Seed Supabase from local ev_users.json (if present) or default admin
             seed_users = None
             if os.path.exists(USERS_FILE):
                 try:
                     with open(USERS_FILE, "r", encoding="utf-8") as f:
-                        seed_users = json.load(f)
+                        seed_users = _normalize_users_dict(json.load(f))
                 except Exception:
                     seed_users = None
             if not seed_users:
@@ -165,13 +260,13 @@ def load_users():
             _sb_upsert_many("ev_users", seed_users)
             return seed_users
         except Exception as e:
-            print("Supabase load_users fallback:", e)
+            _record_db_error("load_users", e)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     if os.path.exists(USERS_FILE):
         try:
             with open(USERS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                return _normalize_users_dict(json.load(f))
         except Exception as e:
             print("Error loading users:", e)
 
@@ -180,15 +275,16 @@ def load_users():
     return default_users
 
 def save_users(users):
+    clean_users = _normalize_users_dict(users)
     if is_cloud_db_enabled():
         try:
-            _sb_upsert_many("ev_users", users)
+            _sb_upsert_many("ev_users", clean_users)
         except Exception as e:
-            print("Supabase save_users error:", e)
+            _record_db_error("save_users", e)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=2, ensure_ascii=False)
+        json.dump(clean_users, f, indent=2, ensure_ascii=False)
 
 def authenticate_user(email, password):
     users = load_users()
@@ -206,7 +302,7 @@ def authenticate_user(email, password):
             "name": user["name"],
             "roll": user.get("roll", "—"),
             "email": user["email"],
-            "role": user["role"],
+            "role": user.get("role", "student").lower(),
             "dept": user.get("dept", "SAKEC"),
             "division": user.get("division", "—")
         }
@@ -240,7 +336,7 @@ def add_user(name, roll, email, role, dept, division="", custom_pass=None):
         try:
             _sb_upsert_row("ev_users", email_key, user_obj)
         except Exception as e:
-            print("Supabase add_user error:", e)
+            _record_db_error("add_user", e)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(USERS_FILE, "w", encoding="utf-8") as f:
@@ -269,7 +365,7 @@ def reset_user_password(email, new_password=None):
         try:
             _sb_upsert_row("ev_users", email_key, u)
         except Exception as e:
-            print("Supabase reset_user_password error:", e)
+            _record_db_error("reset_user_password", e)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(USERS_FILE, "w", encoding="utf-8") as f:
@@ -286,7 +382,7 @@ def delete_user(email):
             try:
                 _sb_delete_row("ev_users", email_key)
             except Exception as e:
-                print("Supabase delete_user error:", e)
+                _record_db_error("delete_user", e)
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, indent=2, ensure_ascii=False)
@@ -340,14 +436,14 @@ def bulk_upload_users_csv(csv_text, default_role="student"):
             users[email_key] = user_obj
             new_batch[email_key] = user_obj
             created += 1
-            details.append({"email": email, "name": name, "roll": roll, "pass": custom_pass})
+            details.append({"email": email_key, "name": name, "roll": roll, "pass": custom_pass})
 
     if new_batch:
         if is_cloud_db_enabled():
             try:
                 _sb_upsert_many("ev_users", new_batch)
             except Exception as e:
-                print("Supabase bulk_upload_users_csv error:", e)
+                _record_db_error("bulk_upload_users_csv", e)
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, indent=2, ensure_ascii=False)
@@ -367,46 +463,66 @@ def _empty_records():
         }
     }
 
+def _normalize_students_dict(raw_students):
+    normalized = {}
+    for k, st_rec in (raw_students or {}).items():
+        if not isinstance(st_rec, dict):
+            continue
+        em = str(st_rec.get("email") or k).strip().lower()
+        if not em:
+            continue
+        rec_copy = dict(st_rec)
+        rec_copy["email"] = em
+        if "completed_modules" not in rec_copy or not isinstance(rec_copy["completed_modules"], dict):
+            rec_copy["completed_modules"] = {}
+        normalized[em] = rec_copy
+    return normalized
+
 def load_records():
     if is_cloud_db_enabled():
         try:
-            cloud_students = _sb_fetch_all("ev_records")
+            cloud_students = _normalize_students_dict(_sb_fetch_all("ev_records"))
             records = _empty_records()
             if cloud_students:
                 records["students"] = cloud_students
                 return records
-            # Seed Supabase once from local ev_student_records.json if it has data
             if os.path.exists(RECORDS_FILE):
                 try:
                     with open(RECORDS_FILE, "r", encoding="utf-8") as f:
                         local_rec = json.load(f)
-                    if local_rec.get("students"):
-                        _sb_upsert_many("ev_records", local_rec["students"])
-                        return local_rec
+                    local_students = _normalize_students_dict(local_rec.get("students", {}))
+                    if local_students:
+                        _sb_upsert_many("ev_records", local_students)
+                        records["students"] = local_students
+                        return records
                 except Exception:
                     pass
             return records
         except Exception as e:
-            print("Supabase load_records fallback:", e)
+            _record_db_error("load_records", e)
 
     if os.path.exists(RECORDS_FILE):
         try:
             with open(RECORDS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                local_rec = json.load(f)
+            local_rec["students"] = _normalize_students_dict(local_rec.get("students", {}))
+            return local_rec
         except Exception as e:
             print("Error loading records:", e)
     return _empty_records()
 
 def save_records(records):
+    clean_students = _normalize_students_dict(records.get("students", {}))
+    records["students"] = clean_students
     if is_cloud_db_enabled():
         try:
-            _sb_upsert_many("ev_records", records.get("students", {}))
+            _sb_upsert_many("ev_records", clean_students)
         except Exception as e:
-            print("Supabase save_records error:", e)
+            _record_db_error("save_records", e)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(RECORDS_FILE, "w", encoding="utf-8") as f:
-        json.dump(records, f, indent=2, ensure_ascii=False)
+        json.dump(_sanitize_json(records), f, indent=2, ensure_ascii=False)
 
 def complete_simulation(email, name, roll, dept, division, module_id, reflection, score, total_q=5, params=None):
     records = load_records()
@@ -443,20 +559,19 @@ def complete_simulation(email, name, roll, dept, division, module_id, reflection
         "quiz_percentage": round((score / total_q) * 100, 1),
         "best_score": int(best_score),
         "attempts": prev_attempts + 1,
-        "parameters": params or {}
+        "parameters": _sanitize_json(params or {})
     }
     st_data["last_active"] = time.time()
 
-    # Atomic per-student row upsert in Supabase (prevents concurrent overwrite!)
     if is_cloud_db_enabled():
         try:
             _sb_upsert_row("ev_records", email_key, st_data)
         except Exception as e:
-            print("Supabase complete_simulation error:", e)
+            _record_db_error("complete_simulation", e)
 
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(RECORDS_FILE, "w", encoding="utf-8") as f:
-        json.dump(records, f, indent=2, ensure_ascii=False)
+        json.dump(_sanitize_json(records), f, indent=2, ensure_ascii=False)
 
     return passed
 
@@ -467,28 +582,31 @@ def get_student_profile(email):
 def get_all_students_progress():
     records = load_records()
     users = load_users()
+    students_map = records.get("students", {})
 
     students_list = []
+    seen_emails = set()
 
-    # Show all enrolled students from users database
+    # 1. Include all enrolled students from ev_users (case-insensitive role check)
     for email, u in users.items():
-        if u.get("role") != "student":
+        if str(u.get("role", "student")).strip().lower() != "student":
             continue
 
-        st_record = records["students"].get(email, {})
+        em_key = email.strip().lower()
+        seen_emails.add(em_key)
+        st_record = students_map.get(em_key, {})
         comp = st_record.get("completed_modules", {})
 
-        # Completed means module passed (>= 3/5)
         completed_modules_count = len([m for m in comp.values() if m.get("completed") is True])
         scores = [m.get("quiz_percentage", 0) for m in comp.values() if m.get("completed") is True]
         avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
 
         students_list.append({
-            "roll": u.get("roll", "—"),
-            "name": u.get("name", "—"),
-            "email": email,
-            "dept": u.get("dept", "—"),
-            "division": u.get("division", "—"),
+            "roll": u.get("roll", st_record.get("roll", "—")),
+            "name": u.get("name", st_record.get("name", "—")),
+            "email": em_key,
+            "dept": u.get("dept", st_record.get("dept", "—")),
+            "division": u.get("division", st_record.get("division", "—")),
             "completed_count": completed_modules_count,
             "total_modules": 7,
             "completion_pct": round((completed_modules_count / 7) * 100, 1),
@@ -497,7 +615,33 @@ def get_all_students_progress():
             "modules": comp
         })
 
-    students_list.sort(key=lambda x: x["roll"])
+    # 2. Also include any student present in ev_records even if missing from ev_users
+    for em_key, st_record in students_map.items():
+        if em_key in seen_emails:
+            continue
+        u_rec = users.get(em_key, {})
+        if u_rec and str(u_rec.get("role", "")).strip().lower() in ("admin", "faculty"):
+            continue
+        comp = st_record.get("completed_modules", {})
+        completed_modules_count = len([m for m in comp.values() if m.get("completed") is True])
+        scores = [m.get("quiz_percentage", 0) for m in comp.values() if m.get("completed") is True]
+        avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+
+        students_list.append({
+            "roll": st_record.get("roll", "—"),
+            "name": st_record.get("name", em_key),
+            "email": em_key,
+            "dept": st_record.get("dept", "—"),
+            "division": st_record.get("division", "—"),
+            "completed_count": completed_modules_count,
+            "total_modules": 7,
+            "completion_pct": round((completed_modules_count / 7) * 100, 1),
+            "average_score": avg_score,
+            "last_active": st_record.get("last_active", 0),
+            "modules": comp
+        })
+
+    students_list.sort(key=lambda x: str(x["roll"]))
     return students_list
 
 def export_master_excel(output_path):
@@ -546,14 +690,14 @@ def export_master_excel(output_path):
     row_num = 6
     module_keys = [f"module_{i}" for i in range(1, 8)]
 
-    for st in students:
-        ws1.cell(row=row_num, column=1, value=st["roll"]).font = bold_font
-        ws1.cell(row=row_num, column=2, value=st["name"]).font = normal_font
-        ws1.cell(row=row_num, column=3, value=st["dept"]).font = normal_font
-        ws1.cell(row=row_num, column=4, value=st["division"]).font = normal_font
+    for st_item in students:
+        ws1.cell(row=row_num, column=1, value=st_item["roll"]).font = bold_font
+        ws1.cell(row=row_num, column=2, value=st_item["name"]).font = normal_font
+        ws1.cell(row=row_num, column=3, value=st_item["dept"]).font = normal_font
+        ws1.cell(row=row_num, column=4, value=st_item["division"]).font = normal_font
 
         for m_idx, m_key in enumerate(module_keys, 5):
-            comp_data = st["modules"].get(m_key, {})
+            comp_data = st_item["modules"].get(m_key, {})
             is_comp = comp_data.get("completed", False)
             score = comp_data.get("quiz_score", 0)
             attempts = comp_data.get("attempts", 0)
@@ -571,15 +715,15 @@ def export_master_excel(output_path):
                 cell.font = Font(name="Calibri", size=9, color="888888")
             cell.alignment = Alignment(horizontal="center")
 
-        ws1.cell(row=row_num, column=12, value=f"{st['completed_count']} / 7").alignment = Alignment(horizontal="center")
-        ws1.cell(row=row_num, column=13, value=f"{st['average_score']}%").alignment = Alignment(horizontal="center")
+        ws1.cell(row=row_num, column=12, value=f"{st_item['completed_count']} / 7").alignment = Alignment(horizontal="center")
+        ws1.cell(row=row_num, column=13, value=f"{st_item['average_score']}%").alignment = Alignment(horizontal="center")
 
         status_cell = ws1.cell(row=row_num, column=14)
-        if st["completed_count"] == 7:
+        if st_item["completed_count"] == 7:
             status_cell.value = "ALL COMPLETED"
             status_cell.fill = green_fill
             status_cell.font = Font(name="Calibri", size=9.5, bold=True, color="0F5132")
-        elif st["completed_count"] >= 4:
+        elif st_item["completed_count"] >= 4:
             status_cell.value = "IN PROGRESS"
             status_cell.fill = orange_fill
         else:
@@ -611,10 +755,10 @@ def export_master_excel(output_path):
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
     ref_row = 5
-    for st in students:
-        for m_key, m_data in st["modules"].items():
-            ws2.cell(row=ref_row, column=1, value=st["roll"]).font = bold_font
-            ws2.cell(row=ref_row, column=2, value=st["name"]).font = normal_font
+    for st_item in students:
+        for m_key, m_data in st_item["modules"].items():
+            ws2.cell(row=ref_row, column=1, value=st_item["roll"]).font = bold_font
+            ws2.cell(row=ref_row, column=2, value=st_item["name"]).font = normal_font
             ws2.cell(row=ref_row, column=3, value=m_key.replace("module_", "Module ")).font = normal_font
             ws2.cell(row=ref_row, column=4, value=f"{m_data.get('quiz_score', 0)}/5").alignment = Alignment(horizontal="center")
             ws2.cell(row=ref_row, column=5, value=m_data.get("attempts", 1)).alignment = Alignment(horizontal="center")
